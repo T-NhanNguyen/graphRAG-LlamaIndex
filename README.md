@@ -176,14 +176,79 @@ docker compose run --rm graphrag python query_engine.py "How does fusion retriev
 docker compose run --rm graphrag python query_engine.py "Nvidia" --type find_connections
 ```
 
-#### B. MCP Server (AI Agent Interface)
+#### C. MCP Server (AI Agent Integration)
 
-The `mcp` service exposes the graph tools to external agents (like Claude Desktop or Gemini). This service runs a persistent server that speaks the **Model Context Protocol**.
+The `mcp` service exposes the graph tools to external AI agents (like **Claude Desktop** or **Gemini CLI**) via the **Model Context Protocol**.
 
-```bash
-# Start the persistent MCP server
-docker compose up mcp
+##### Local Desktop Integration
+
+To integrate with Gemini CLI or Claude Desktop, add the following configuration to your MCP `settings.json`:
+
+**For Gemini CLI**: `~/.gemini/settings.json`  
+**For Claude Desktop**: `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows)
+
+```json
+{
+  "mcpServers": {
+    "graphrag": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "-v",
+        "/path/to/your/graphRAG-LlamaIndex:/app",
+        "-v",
+        "graphrag_node_modules:/app/node_modules",
+        "-v",
+        "/path/to/your/graphRAG-LlamaIndex/.DuckDB:/app/.DuckDB",
+        "-v",
+        "/path/to/your/graphRAG-LlamaIndex/output:/app/output",
+        "--add-host=host.docker.internal:host-gateway",
+        "--env-file",
+        "/path/to/your/graphRAG-LlamaIndex/.env",
+        "-e",
+        "NODE_NO_WARNINGS=1",
+        "graphrag-llamaindex",
+        "npx",
+        "tsx",
+        "mcp_server.ts"
+      ]
+    }
+  }
+}
 ```
+
+**Important Path Adjustments**:
+
+- Replace `/path/to/your/graphRAG-LlamaIndex` with your actual project path
+- On Windows, use WSL paths (`/mnt/c/...` for `C:\...`)
+- On macOS/Linux, use absolute paths (e.g., `/Users/yourname/projects/graphRAG-LlamaIndex`)
+
+**Verify Integration**:
+After adding the configuration, restart your AI client. You should see three new tools available:
+
+- `search(query, mode, topK)` - Main retrieval interface
+- `explore_entity_graph(entityName, depth)` - Graph traversal
+- `get_corpus_stats()` - Database health check
+
+##### ⚠️ Web Service Limitation
+
+**This MCP server is designed for local desktop use only.** It cannot be used with web-based AI services (like ChatGPT, Claude Web, or Gemini Web) because:
+
+1. **No Public Endpoint**: The MCP server runs on your local machine via Docker. Web services cannot reach `localhost` or Docker containers on your computer.
+2. **Security Model**: MCP uses `stdio` (standard input/output) for communication, which requires direct process execution—not possible over HTTP.
+3. **File System Access**: The server needs direct access to your local `.DuckDB` database and `output/` directory.
+
+**Alternative for Web Services**:
+If you need to expose your GraphRAG index to web-based AI tools, you would need to:
+
+1. Deploy a REST API wrapper (e.g., using FastAPI) around `query_engine.py`
+2. Host it on a cloud server (AWS, DigitalOcean, etc.)
+3. Secure it with API keys and HTTPS
+4. Configure the web AI service to call your API endpoint
+
+This is beyond the scope of this local-first implementation.
 
 ### 5. Utilities & Stats (MCP Toolset)
 
