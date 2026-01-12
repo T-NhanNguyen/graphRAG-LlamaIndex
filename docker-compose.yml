@@ -1,0 +1,40 @@
+services:
+  # Main service - Indexing, querying, and ad-hoc commands
+  # Run with: docker compose run --rm graphrag [command]
+  graphrag:
+    build: .
+    image: graphrag-llamaindex
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ../../../analysis-docs/converted_md/test_articles:/app/input
+      - ./output:/app/output
+      - ./.DuckDB:/app/.DuckDB
+      - .:/app
+    env_file:
+      - .env
+    stdin_open: true
+    tty: true
+    # Default: run indexer
+    command: ["python", "indexer.py"]
+
+  # MCP Server - Persistent server for AI agent integration
+  # Run with: docker compose up mcp
+  mcp:
+    image: graphrag-llamaindex
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ../../../analysis-docs/converted_md/test_articles:/app/input
+      - ./output:/app/output
+      - ./.DuckDB:/app/.DuckDB
+      - .:/app
+      - /app/node_modules
+    env_file:
+      - .env
+    stdin_open: true
+    tty: true
+    environment:
+      - PYTHONUNBUFFERED=1
+      - NODE_NO_WARNINGS=1
+    command: ["npx", "tsx", "mcp_server.ts"]
