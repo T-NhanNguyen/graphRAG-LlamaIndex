@@ -39,8 +39,8 @@ from duckdb_store import getStore
 # --- Constants ---
 DEFAULT_TOP_K = 10
 DEFAULT_HOPS = 1
-TOGGLE_MINIFIED_OUTPUT = True   # False for pretty-printed JSON (indent=2)
-TOGGLE_TSON_OUTPUT = True       # False to bypass TSON tabular compression
+TOGGLE_MINIFIED_OUTPUT = False   # False for pretty-printed JSON (indent=2)
+TOGGLE_TSON_OUTPUT = False      # False to bypass TSON tabular compression
 
 # Singleton instances for reuse across calls
 _queryEngine: Optional[GraphRAGQueryEngine] = None
@@ -133,13 +133,38 @@ def _truncateResults(result: Any, topK: int) -> Any:
     if isinstance(data.get("relationships"), list):
         data["relationships"] = data["relationships"][:directRelLimit + extendedRelLimit]
         
-    # 4. Remove embeddings from output (agents don't need raw vectors)
+    # 4. Remove embeddings and chunkIds from output (agents don't need internal IDs)
     if isinstance(data.get("chunks"), list):
         for chunk in data["chunks"]:
             if isinstance(chunk, dict):
                 chunk.pop("embedding", None)
+                chunk.pop("chunkId", None)
+    
+    # 5. Clean up entities - remove internal bookkeeping, keep only semantic data
+    if isinstance(data.get("entities"), list):
+        for entity in data["entities"]:
+            if isinstance(entity, dict):
+                entity.pop("id", None)              # UUID - not needed
+                entity.pop("description", None)     # GLiNER extraction metadata - not semantic
+                entity.pop("sourceChunks", None)    # UUID list - not needed
                 
-    # 5. Update Metadata counts to match final output
+    # 6. Clean up relationships - remove UUIDs, keep semantic triples
+    def cleanRelationships(relList):
+        if isinstance(relList, list):
+            for rel in relList:
+                if isinstance(rel, dict):
+                    rel.pop("id", None)         # UUID - not needed
+                    rel.pop("source", None)     # UUID - we have sourceName
+                    rel.pop("target", None)     # UUID - we have targetName
+                    rel.pop("weight", None)     # Always 1.0 - noise
+    
+    # Clean both flat relationships and evidence relationships
+    cleanRelationships(data.get("relationships"))
+    if data.get("evidence"):
+        cleanRelationships(data["evidence"].get("directRelationships"))
+        cleanRelationships(data["evidence"].get("extendedRelationships"))
+                
+    # 7. Update Metadata counts to match final output
     if data.get("metadata"):
         meta = data["metadata"]
         if isinstance(data.get("entities"), list):
