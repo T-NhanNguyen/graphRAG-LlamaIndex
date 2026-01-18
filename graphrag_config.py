@@ -212,12 +212,59 @@ JSON:"""
     
     SCORE:"""
 
-    # Paths
+    # Paths (can be overridden by forDatabase factory)
     INPUT_DIR: str = "./input"
     OUTPUT_DIR: str = "./output"
     
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    
+    @classmethod
+    def forDatabase(cls, dbName: str = None) -> "GraphRAGSettings":
+        """
+        Create settings instance with database-specific paths.
+        
+        Loads provider settings (LLM, embeddings) from .env but overrides
+        paths (DUCKDB_PATH, INPUT_DIR, OUTPUT_DIR) from the workspace registry.
+        
+        Args:
+            dbName: Database name. If None or not found, uses 'default'.
+        
+        Returns:
+            GraphRAGSettings instance configured for the specified database.
+        
+        Raises:
+            ValueError: If database doesn't exist and can't be created.
+        """
+        from workspace_config import getRegistry
+        
+        registry = getRegistry()
+        dbConfig = registry.getOrDefault(dbName)
+        
+        # Create new instance with .env settings
+        instance = cls()
+        
+        # Override paths with database-specific values
+        instance.DUCKDB_PATH = dbConfig.dbPath
+        instance.INPUT_DIR = dbConfig.inputDir
+        instance.OUTPUT_DIR = dbConfig.outputDir
+        
+        return instance
 
 
-# Singleton instance
+# Singleton instance (default settings from .env)
 settings = GraphRAGSettings()
+
+
+def getSettingsForDatabase(dbName: str = None) -> GraphRAGSettings:
+    """
+    Convenience function to get settings for a specific database.
+    
+    Args:
+        dbName: Database name, or None for default.
+    
+    Returns:
+        GraphRAGSettings configured for the database.
+    """
+    if dbName is None:
+        return settings  # Return global singleton for default
+    return GraphRAGSettings.forDatabase(dbName)

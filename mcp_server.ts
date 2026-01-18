@@ -28,18 +28,18 @@ const server = new Server({
 const tools = [
     {
         name: "search",
-        description: "Search the GraphRAG knowledge base. Choose a mode based on your information need:\n- 'entity_connections': Find specific entities and their relationships (WHO/WHAT is connected to X?)\n- 'thematic_overview': Explore high-level themes and patterns (WHAT are the big trends?)\n- 'keyword_lookup': Fast direct retrieval for specific terms (WHERE does X appear?)",
+        description: "Search the GraphRAG knowledge base with THREE distinct modes:\n\n**CRITICAL: For ticker symbols (ASTS, RKLB, NBIS) or acronyms, ALWAYS use 'keyword_lookup' FIRST.**\nSemantic search (entity_connections/thematic_overview) can MISS exact ticker matches.\n\nWorkflow:\n1. Ticker/Acronym Query → Use 'keyword_lookup' to find raw mentions\n2. If found → Extract entity names from results\n3. Then use 'entity_connections' or 'thematic_overview' with full entity names for deeper analysis\n\nMode Selection Guide:\n- 'keyword_lookup': Direct BM25 retrieval for EXACT terms (tickers, acronyms, specific names)\n  → Returns: Raw text chunks containing the literal search term\n  → Use for: ASTS, NYSE:RKLB, \"Direct-to-Cell\", specific product names\n\n- 'entity_connections': Find entities and their knowledge graph relationships\n  → Returns: Entities + relationships + supporting chunks\n  → Use for: Company relationships, competitive landscape, partnerships\n  → Example: After finding 'AST SpaceMobile' via keyword_lookup, search 'AST SpaceMobile competitors partners'\n\n- 'thematic_overview': High-level patterns and trends across corpus\n  → Returns: Broad thematic context\n  → Use for: Industry trends, macro narratives, sector analysis\n  → Example: 'satellite telecommunications market trends'",
         inputSchema: {
             type: "object",
             properties: {
                 query: { 
                     type: "string", 
-                    description: "Natural language query" 
+                    description: "Search query string" 
                 },
                 mode: { 
                     type: "string", 
                     enum: ["entity_connections", "thematic_overview", "keyword_lookup"],
-                    description: "Search mode: 'entity_connections' (default) for relationships, 'thematic_overview' for big picture, 'keyword_lookup' for direct term search" 
+                    description: "**IMPORTANT**: Use 'keyword_lookup' for ticker symbols and acronyms. Use 'entity_connections' for relationships. Use 'thematic_overview' for broad patterns. Default: 'entity_connections'" 
                 },
                 topK: { 
                     type: "integer", 

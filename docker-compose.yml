@@ -1,22 +1,31 @@
 services:
-  # Main service - Indexing, querying, and ad-hoc commands
-  # Run with: docker compose run --rm graphrag [command]
+  # Main service - CLI for indexing, querying, and database management
+  # Run with: docker compose run --rm graphrag python graphrag_cli.py <command>
+  # Examples:
+  #   docker compose run --rm graphrag python graphrag_cli.py start my-corpus --input /app/input
+  #   docker compose run --rm graphrag python graphrag_cli.py index my-corpus
+  #   docker compose run --rm graphrag python graphrag_cli.py search my-corpus "query"
+  #   docker compose run --rm graphrag python graphrag_cli.py list
   graphrag:
     build: .
     image: graphrag-llamaindex
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
-      - ../../analysis-docs/converted_md/Documents:/app/input
-      - ./output:/app/output
-      - ./.DuckDB:/app/.DuckDB
+      # Global registry (stores database configs)
+      - ~/.graphrag:/root/.graphrag
+      # User data directory (set via GRAPHRAG_DATA_DIR in .env)
+      - ${GRAPHRAG_DATA_DIR:-./data}:/app/data
+      # Project directory (for code access)
       - .:/app
     env_file:
       - .env
+    environment:
+      - GRAPHRAG_DATABASE=${GRAPHRAG_DATABASE:-default}
     stdin_open: true
     tty: true
-    # Default: run indexer
-    command: ["python", "indexer.py"]
+    # Default: show CLI help
+    command: ["python", "graphrag_cli.py", "--help"]
 
   # MCP Server - Persistent server for AI agent integration
   # Run with: docker compose up mcp
@@ -25,9 +34,8 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
-      - ../../analysis-docs/converted_md/Documents:/app/input
-      - ./output:/app/output
-      - ./.DuckDB:/app/.DuckDB
+      - ~/.graphrag:/root/.graphrag
+      - ${GRAPHRAG_DATA_DIR:-./data}:/app/data
       - .:/app
       - /app/node_modules
     env_file:

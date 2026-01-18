@@ -38,6 +38,7 @@ wheels/
 .DuckDB/
 *.duckdb
 *.db
+data/  # Local data directory (if using default GRAPHRAG_DATA_DIR)
 
 # Output / Artifacts
 output/
@@ -53,6 +54,7 @@ Thumbs.db
 # IDE
 .vscode/
 .idea/
+.agent/
 
 # Node
 node_modules/

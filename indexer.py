@@ -303,8 +303,18 @@ class GraphRAGIndexer:
         Returns:
             Tuple of (docId, status). docId is None if document is already complete and skipIfExists is True.
         """
-        # Check if already indexed
+        # Check if already indexed (exact path match first)
         existing = self.store.getSourceDocumentByPath(filePath)
+        
+        # Fallback: portable matching by filename + parent folder
+        # This handles cases where mount paths change but files are the same
+        if not existing:
+            existing = self.store.getSourceDocumentByFilename(filePath)
+            if existing:
+                # Update the stored path to the new mount path
+                self.store.updateSourceDocumentPath(existing.id, filePath)
+                logger.info(f"Matched existing document by filename: {filePath}")
+        
         if existing:
             if skipIfExists and existing.pipelineStatus == PipelineStatus.COMPLETE:
                 logger.debug(f"Skipping complete document: {filePath}")

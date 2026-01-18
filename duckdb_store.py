@@ -306,6 +306,55 @@ class DuckDBStore:
             )
         return None
     
+    def getSourceDocumentByFilename(self, filePath: str) -> Optional[SourceDocument]:
+        """
+        Match document by filename and parent folder (portable path matching).
+        
+        Used when mount paths change but the actual files are the same.
+        Matches on: filename + immediate parent folder name.
+        
+        Example: /app/input/docs/report.md matches /app/data/docs/report.md
+        
+        Args:
+            filePath: New file path to match against stored paths
+            
+        Returns:
+            SourceDocument if a match is found, None otherwise
+        """
+        from pathlib import Path
+        path = Path(filePath)
+        filename = path.name
+        parentFolder = path.parent.name if path.parent else ""
+        
+        # Match: filename AND parent folder name
+        # This prevents false matches when same filename exists in different folders
+        result = self.connection.execute("""
+            SELECT id, source_path, raw_content, pipeline_status, created_at 
+            FROM source_documents 
+            WHERE source_path LIKE ?
+              AND source_path LIKE ?
+            LIMIT 1
+        """, [f"%/{parentFolder}/{filename}", f"%{filename}"]).fetchone()
+        
+        if result:
+            logger.debug(f"Matched '{filePath}' to existing document '{result[1]}'")
+            return SourceDocument(
+                id=result[0],
+                sourcePath=result[1],
+                rawContent=result[2],
+                pipelineStatus=result[3],
+                createdAt=str(result[4]) if result[4] else None
+            )
+        return None
+    
+    def updateSourceDocumentPath(self, docId: str, newPath: str) -> None:
+        """Update the source path for a document (used after mount path migration)."""
+        self.connection.execute(
+            "UPDATE source_documents SET source_path = ? WHERE id = ?",
+            [newPath, docId]
+        )
+        logger.info(f"Updated document path to: {newPath}")
+    
     def updatePipelineStatus(self, docId: str, status: str) -> None:
         """Update the pipeline status for a source document."""
         self.connection.execute(
@@ -1141,6 +1190,41 @@ class DuckDBStore:
         except Exception as exc:
             logger.error(f"Failed to prune stranded entities: {exc}")
             return 0
+    
+    def getCorpusStats(self) -> Dict[str, Any]:
+        """
+        Get comprehensive statistics about the corpus.
+        
+        Returns:
+            Dict with counts for documents, chunks, entities, relationships.
+        """
+        try:
+            stats = {}
+            
+            # Document count
+            result = self.connection.execute("SELECT COUNT(*) FROM source_documents").fetchone()
+            stats['documentCount'] = result[0] if result else 0
+            
+            # Chunk count
+            result = self.connection.execute("SELECT COUNT(*) FROM documents").fetchone()
+            stats['chunkCount'] = result[0] if result else 0
+            
+            # Entity count
+            result = self.connection.execute("SELECT COUNT(*) FROM entities").fetchone()
+            stats['entityCount'] = result[0] if result else 0
+            
+            # Relationship count
+            result = self.connection.execute("SELECT COUNT(*) FROM relationships").fetchone()
+            stats['relationshipCount'] = result[0] if result else 0
+            
+            # Community count
+            result = self.connection.execute("SELECT COUNT(*) FROM community_summaries").fetchone()
+            stats['communityCount'] = result[0] if result else 0
+            
+            return stats
+        except Exception as exc:
+            logger.error(f"Failed to get corpus stats: {exc}")
+            return {}
 
     def close(self) -> None:
         """Close the database connection."""
@@ -1155,8 +1239,47 @@ class DuckDBStore:
         self.close()
         return False
 
+# Multi-instance store cache for supporting multiple databases
+_storeInstances: Dict[str, DuckDBStore] = {}
 
-# Convenience function for quick access
-def getStore(dbPath: Optional[str] = None) -> DuckDBStore:
-    """Get a DuckDB store instance."""
-    return DuckDBStore(dbPath)
+
+def getStore(dbPath: Optional[str] = None, refresh: bool = False) -> DuckDBStore:
+    """
+    Get or create a DuckDB store instance for the given path.
+    
+    Implements multi-instance caching to support concurrent access to
+    different databases without repeated initialization overhead.
+    
+    Args:
+        dbPath: Path to .duckdb file. Uses settings.DUCKDB_PATH if None.
+        refresh: If True, close existing connection and create new one.
+    
+    Returns:
+        DuckDBStore instance for the specified database.
+    """
+    path = dbPath or settings.DUCKDB_PATH
+    
+    # Normalize path for consistent cache keys
+    path = os.path.abspath(path)
+    
+    if refresh and path in _storeInstances:
+        _storeInstances[path].close()
+        del _storeInstances[path]
+        logger.info(f"Refreshed store instance for: {path}")
+    
+    if path not in _storeInstances:
+        _storeInstances[path] = DuckDBStore(path)
+    
+    return _storeInstances[path]
+
+
+def closeAllStores() -> None:
+    """Close all cached store instances. Useful for cleanup."""
+    global _storeInstances
+    for path, store in _storeInstances.items():
+        try:
+            store.close()
+        except Exception as e:
+            logger.warning(f"Error closing store {path}: {e}")
+    _storeInstances = {}
+    logger.info("Closed all store instances")

@@ -91,7 +91,7 @@ class LocalLLMClient:
         systemPromptLen = len(settings.LLM_SYSTEM_PROMPT)
         promptLen = len(prompt)
         estimatedInputTokens = (systemPromptLen + promptLen) // 4
-        logger.debug(f"📊 LLM Request: ~{estimatedInputTokens} input tokens, max_tokens={self.maxTokens}, num_ctx={settings.LLM_CONTEXT_LENGTH}")
+        logger.debug(f"LLM request: ~{estimatedInputTokens} input tokens, max_tokens={self.maxTokens}, num_ctx={settings.LLM_CONTEXT_LENGTH}")
         
         try:
             with httpx.Client(timeout=600.0) as client:
@@ -105,19 +105,19 @@ class LocalLLMClient:
                 
         except httpx.TimeoutException:
             error = f"LLM request timed out after 600s"
-            logger.error(f"❌ {error}. Prompt snippet: {prompt[:500]}...")
+            logger.error(f"Error: {error}. Prompt snippet: {prompt[:500]}...")
             return "", error
         except httpx.HTTPStatusError as exc:
             error = f"LLM API error: {exc.response.status_code}: {exc.response.text}"
-            logger.error(f"❌ {error}. Prompt snippet: {prompt[:500]}...")
+            logger.error(f"Error: {error}. Prompt snippet: {prompt[:500]}...")
             return "", error
         except httpx.ConnectError as exc:
             error = f"Cannot connect to LLM at {self.baseUrl}"
-            logger.error(f"❌ {error}. Prompt snippet: {prompt[:500]}...")
+            logger.error(f"Error: {error}. Prompt snippet: {prompt[:500]}...")
             return "", error
         except Exception as exc:
             error = f"LLM request failed: {exc}"
-            logger.error(f"❌ {error}. Prompt snippet: {prompt[:500]}...")
+            logger.error(f"[ERROR] {error}. Prompt snippet: {prompt[:500]}...")
             return "", error
     
     def _normalizeJson(self, text: str) -> str:
@@ -610,13 +610,13 @@ class LocalLLMClient:
                 # Docker Model Runner uses /v1/models endpoint
                 response = client.get(f"{self.baseUrl}/v1/models")
                 if response.status_code == 200:
-                    logger.info(f"✅ LLM endpoint available: {self.baseUrl}")
+                    logger.info(f"LLM endpoint available: {self.baseUrl}")
                     return True
                 else:
-                    logger.warning(f"⚠️ LLM endpoint returned {response.status_code}")
+                    logger.warning(f"LLM endpoint returned {response.status_code}")
                     return False
         except Exception as exc:
-            logger.warning(f"⚠️ LLM endpoint not reachable: {self.baseUrl} - {exc}")
+            logger.warning(f"Warning: LLM endpoint not reachable at {self.baseUrl}: {exc}")
             return False
 
     def summarizeCommunity(self, communityId: str, entities: List[Entity]) -> str:
@@ -722,13 +722,13 @@ class OpenRouterClient(LocalLLMClient):
             # Track usage for observability
             usage = getattr(completion, 'usage', None)
             if usage:
-                logger.info(f"📊 {taskDescription} usage: {usage.prompt_tokens}p + {usage.completion_tokens}c = {usage.total_tokens} tokens")
+                logger.info(f"{taskDescription} usage: {usage.prompt_tokens}p + {usage.completion_tokens}c = {usage.total_tokens} tokens")
             
             return content, None
             
         except Exception as exc:
             error = f"OpenRouter API error: {exc}"
-            logger.error(f"❌ {error}")
+            logger.error(f"Error: {error}")
             return "", error
 
     def isAvailable(self) -> bool:

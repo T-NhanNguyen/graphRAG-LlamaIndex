@@ -39,8 +39,8 @@ from duckdb_store import getStore
 # --- Constants ---
 DEFAULT_TOP_K = 10
 DEFAULT_HOPS = 1
-TOGGLE_MINIFIED_OUTPUT = False   # False for pretty-printed JSON (indent=2)
-TOGGLE_TSON_OUTPUT = False      # False to bypass TSON tabular compression
+TOGGLE_MINIFIED_OUTPUT = True   # False for pretty-printed JSON (indent=2)
+TOGGLE_TSON_OUTPUT = True      # False to bypass TSON tabular compression
 
 # Singleton instances for reuse across calls
 _queryEngine: Optional[GraphRAGQueryEngine] = None
