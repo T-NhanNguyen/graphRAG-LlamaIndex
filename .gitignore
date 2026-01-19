@@ -69,3 +69,7 @@ docs/archive/
 function_tests
 instructions
 future_plans
+
+# alias
+.graphrag-alias.ps1
+.graphrag-alias.sh
