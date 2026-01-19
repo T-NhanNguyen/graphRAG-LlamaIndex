@@ -86,7 +86,7 @@ class GraphRAGSettings(BaseSettings):
 
 
     
-    # DuckDB Storage
+    # DuckDB Storage (Registry managed, defaults provided for safety)
     DUCKDB_PATH: str = "./.DuckDB/graphrag.duckdb"
     
     # Indexing Parameters
@@ -212,9 +212,9 @@ JSON:"""
     
     SCORE:"""
 
-    # Paths (can be overridden by forDatabase factory)
-    INPUT_DIR: str = "./input"
-    OUTPUT_DIR: str = "./output"
+    # Registry-managed paths (Overridden by forDatabase factory)
+    INPUT_DIR: str = ""
+    OUTPUT_DIR: str = ""
     
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
     

@@ -13,7 +13,7 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       # Global registry (stores database configs)
-      - ~/.graphrag:/root/.graphrag
+      - ${GRAPHRAG_REGISTRY_DIR:-~/.graphrag}:/root/.graphrag
       # User data directory (set via GRAPHRAG_DATA_DIR in .env)
       - ${GRAPHRAG_DATA_DIR:-./data}:/app/data
       # Project directory (for code access)
@@ -34,7 +34,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
-      - ~/.graphrag:/root/.graphrag
+      - ${GRAPHRAG_REGISTRY_DIR:-~/.graphrag}:/root/.graphrag
       - ${GRAPHRAG_DATA_DIR:-./data}:/app/data
       - .:/app
       - /app/node_modules
@@ -45,4 +45,5 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - NODE_NO_WARNINGS=1
+      - GRAPHRAG_DATABASE=${GRAPHRAG_DATABASE:-default}
     command: ["npx", "tsx", "mcp_server.ts"]

@@ -498,7 +498,7 @@ def main():
     p_index.set_defaults(func=_cmdIndex)
     
     # --- search ---
-    p_search = subparsers.add_parser('search', help='Query the knowledge graph')
+    p_search = subparsers.add_parser('search', help='Query the knowledge graph, use with -t <connections, thematic, keyword>')
     p_search.add_argument('database', nargs='?', help='Database name')
     p_search.add_argument('query', help='Search query')
     p_search.add_argument('--type', '-t', choices=['connections', 'thematic', 'keyword'],

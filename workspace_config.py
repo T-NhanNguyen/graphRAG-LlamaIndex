@@ -12,7 +12,8 @@ from dataclasses import dataclass, asdict, field
 logger = logging.getLogger(__name__)
 
 # --- Constants (Uppercase per coding framework) ---
-DEFAULT_DATABASE_NAME = "default"
+import os
+DEFAULT_DATABASE_NAME = os.environ.get("GRAPHRAG_DATABASE", "default").strip().lower()
 REGISTRY_DIR = Path.home() / ".graphrag"
 REGISTRY_FILE = REGISTRY_DIR / "registry.json"
 DATABASES_DIR = REGISTRY_DIR / "databases"

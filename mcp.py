@@ -35,6 +35,7 @@ logging.getLogger("duckdb").setLevel(logging.WARNING)
 import json_to_tson
 from query_engine import GraphRAGQueryEngine, QueryResult
 from duckdb_store import getStore
+from graphrag_config import getSettingsForDatabase
 
 # --- Constants ---
 DEFAULT_TOP_K = 10
@@ -292,7 +293,7 @@ def routeCommand(commandString: str) -> str:
     # Database health and scale check
     elif functionName == "get_corpus_stats":
         store = getStore()
-        stats = store.getStats()
+        stats = store.getCorpusStats()
         return _formatMcpResponse(stats)
     
     else:
