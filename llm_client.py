@@ -1,16 +1,4 @@
-"""
-Local LLM Client - Entity and relationship extraction via Docker-hosted models.
-
-Connects to OpenAI-compatible endpoints (Ollama, Docker Model Runner) for:
-- Entity extraction from text chunks
-- Relationship identification between entities
-- Structured JSON output parsing
-
-Following coding framework guidelines:
-- Typed parameters and returns for LLM tool compatibility
-- Retry logic with contextual logging
-- No silent failures
-"""
+# Local LLM Client - Entity and relationship extraction via Docker-hosted or OpenRouter models.
 import json
 import re
 import logging
@@ -34,7 +22,7 @@ logging.getLogger("httpx").setLevel(logging.INFO)
 # Result Dataclass
 @dataclass
 class ExtractionResult:
-    """Result from entity/relationship extraction."""
+    # Result from entity/relationship extraction.
     entities: List[Entity]
     relationships: List[Relationship]
     rawResponse: str
@@ -43,20 +31,10 @@ class ExtractionResult:
 
 
 class LocalLLMClient:
-    """
-    Client for local LLM entity extraction.
-    
-    Uses OpenAI-compatible API format for Ollama/Docker Model Runner.
-    """
+    # Client for local LLM extraction using OpenAI-compatible API format (Ollama/Docker Model Runner).
     
     def __init__(self, baseUrl: Optional[str] = None, model: Optional[str] = None):
-        """
-        Initialize LLM client.
-        
-        Args:
-            baseUrl: API endpoint (defaults to settings.LLM_URL)
-            model: Model name (defaults to settings.LLM_MODEL)
-        """
+        # Initialize LLM client with optional baseUrl and model name.
         self.baseUrl = baseUrl or settings.LLM_URL
         self.model = model or settings.LLM_MODEL
         self.temperature = settings.LLM_TEMPERATURE
@@ -67,12 +45,7 @@ class LocalLLMClient:
         logger.info(f"LLM client initialized: {self.baseUrl} using {self.model}")
     
     def _callLLM(self, prompt: str, taskDescription: str = "LLM request") -> Tuple[str, Optional[str]]:
-        """
-        Make a chat completion request to the LLM.
-        
-        Returns:
-            Tuple of (response_text, error_message)
-        """
+        # Make a chat completion request to the LLM. Returns (response_text, error_message).
         # Docker Model Runner uses OpenAI-compatible /v1/chat/completions endpoint
         endpoint = f"{self.baseUrl}/v1/chat/completions"
         
@@ -121,22 +94,13 @@ class LocalLLMClient:
             return "", error
     
     def _normalizeJson(self, text: str) -> str:
-        """
-        Normalize common LLM JSON hallucinations before parsing.
-        
-        Handles patterns like:
-        - "key":": "value" -> "key": "value" (extra colon after key)
-        - "key":: "value" -> "key": "value" (double colon)
-        """
+        # Normalize common LLM JSON hallucinations like redundant colons before parsing.
         normalizedText = re.sub(r'":\s*":\s*"', '": "', text)
         normalizedText = re.sub(r'"::\s*"', '": "', normalizedText)
         return normalizedText
     
     def _parseJson(self, text: str) -> Optional[Dict]:
-        """
-        Attempt to parse JSON from LLM response, handling common issues.
-        Includes a repair mechanism for truncated JSON.
-        """
+        # Parse JSON from LLM response, handling markers, thinking tags, and truncated content.
         if not text:
             return None
         
@@ -190,7 +154,7 @@ class LocalLLMClient:
         return None
 
     def _tryRepairTruncated(self, jsonStr: str) -> Optional[Dict]:
-        """Attempt to close balance unclosed braces and brackets."""
+        # Attempt to balance unclosed braces and brackets for truncated JSON responses.
         # Clean up any trailing text that isn't part of the JSON structure
         # (e.g., if it stopped in the middle of a word)
         # Find the last valid structural character
@@ -243,17 +207,7 @@ class LocalLLMClient:
             return None
     
     def extractEntities(self, text: str, chunkId: str, sourceDocumentId: str = "") -> List[Entity]:
-        """
-        Extract entities from text chunk.
-        
-        Args:
-            text: Source text to extract from
-            chunkId: ID of the chunk (for source tracking)
-            sourceDocumentId: ID of the source document
-            
-        Returns:
-            List of Entity objects
-        """
+        # Extract entities from text chunk. Returns list of Entities.
         prompt = settings.ENTITY_EXTRACTION_PROMPT.format(
             text=text[:3000],  # Limit context length
             max_entities=self.maxEntities
@@ -297,16 +251,7 @@ class LocalLLMClient:
         return entities
     
     def extractRelationships(self, text: str, entities: List[Entity]) -> List[Relationship]:
-        """
-        Extract relationships between entities.
-        
-        Args:
-            text: Source text
-            entities: Previously extracted entities
-            
-        Returns:
-            List of Relationship objects
-        """
+        # Extract relationships between entities from source text.
         if not entities:
             return []
         
@@ -370,17 +315,7 @@ class LocalLLMClient:
         return relationships
     
     def extract(self, text: str, chunkId: str, sourceDocumentId: str = "") -> ExtractionResult:
-        """
-        Full extraction pipeline: entities then relationships.
-        
-        Args:
-            text: Source text chunk
-            chunkId: Chunk identifier
-            sourceDocumentId: Source document identifier
-            
-        Returns:
-            ExtractionResult with entities and relationships
-        """
+        # Full extraction pipeline: entities followed by relationships.
         try:
             entities = self.extractEntities(text, chunkId, sourceDocumentId)
             relationships = self.extractRelationships(text, entities) if entities else []
@@ -401,18 +336,7 @@ class LocalLLMClient:
             )
     
     def extractEntitiesBatch(self, chunks: List) -> Dict[str, List[Entity]]:
-        """
-        Extract entities from multiple chunks in a single LLM call.
-        
-        Uses explicit chunk separators to prevent cross-contamination.
-        Each chunk is processed independently by the LLM.
-        
-        Args:
-            chunks: List of DocumentChunk objects
-            
-        Returns:
-            Dict mapping chunk IDs to their extracted entities
-        """
+        # Extract entities from multiple chunks in a single LLM call using chunk separators.
         if not chunks:
             return {}
         
@@ -475,20 +399,7 @@ class LocalLLMClient:
         return results
     
     def extractRelationshipsBatch(self, chunks: List, entityMap: Dict[str, List[Entity]]) -> Dict[str, List[Relationship]]:
-        """
-        Extract relationships from multiple chunks in a single LLM call.
-        
-        Following bulk fetch guidelines to minimize network loops.
-        Provides all local document context (entities from all chunks in batch)
-        to allow cross-chunk relationship discovery.
-        
-        Args:
-            chunks: List of DocumentChunk objects
-            entityMap: mapping of chunkId to their already extracted entities
-            
-        Returns:
-            Dict mapping chunk IDs to their extracted relationships
-        """
+        # Batch extract relationships minimizing network loops and providing document context.
         if not chunks:
             return {}
         
@@ -572,24 +483,12 @@ class LocalLLMClient:
         return results
 
     def extractBatch(self, chunks: List) -> List[ExtractionResult]:
-        """
-        Full extraction pipeline for a batch of chunks.
-        
-        Uses dual-batch strategy (Entities then Relationships) for maximum efficiency.
-        
-        Args:
-            chunks: List of DocumentChunk objects
-            
-        Returns:
-            List of ExtractionResult objects, one per chunk
-        """
+        # Full extraction pipeline for a batch of chunks using dual-batch strategy.
         if not chunks:
             return []
         
-        # 1. Batch entity extraction (1 LLM call)
         entityMap = self.extractEntitiesBatch(chunks)
         
-        # 2. Batch relationship extraction (1 LLM call)
         relationshipMap = self.extractRelationshipsBatch(chunks, entityMap)
         
         results = []
@@ -604,7 +503,7 @@ class LocalLLMClient:
         return results
     
     def isAvailable(self) -> bool:
-        """Check if the LLM endpoint is reachable via Docker Model Runner."""
+        # Check if the LLM endpoint is reachable via Docker Model Runner.
         try:
             with httpx.Client(timeout=10.0) as client:
                 # Docker Model Runner uses /v1/models endpoint
@@ -620,16 +519,7 @@ class LocalLLMClient:
             return False
 
     def summarizeCommunity(self, communityId: str, entities: List[Entity]) -> str:
-        """
-        Generate a thematic summary for a group of entities.
-        
-        Args:
-            communityId: Identifier for the community
-            entities: List of entities in this cluster
-            
-        Returns:
-            Thematic summary string
-        """
+        # Generate a thematic summary for a group of entities.
         if not entities:
             return "Empty community."
             
@@ -650,15 +540,7 @@ class LocalLLMClient:
         return response.strip()
 
     def scoreQuality(self, text: str) -> float:
-        """
-        Score the quality of a text chunk using the LLM.
-        
-        Args:
-            text: Text chunk to score
-            
-        Returns:
-            Float score between 0.0 and 1.0 (default 1.0 on failure)
-        """
+        # Score the quality of a text chunk (0.0 to 1.0) using the LLM.
         prompt = settings.QUALITY_SCORING_PROMPT.format(text=text)
         response, error = self._callLLM(prompt, taskDescription="Quality Scoring")
         
@@ -680,14 +562,10 @@ class LocalLLMClient:
 
 
 class OpenRouterClient(LocalLLMClient):
-    """
-    Client for OpenRouter API extraction.
-    
-    Compatible with OpenAI SDK, optimized for relationship extraction grunt work.
-    """
+    # Client for OpenRouter API extraction, optimized for relationship grunt work.
     
     def __init__(self, apiKey: Optional[str] = None, model: Optional[str] = None):
-        """Initialize OpenRouter client."""
+        # Initialize OpenRouter client.
         super().__init__()
         self.apiKey = apiKey or settings.OPENROUTER_API_KEY
         self.model = model or settings.OPENROUTER_MODEL
@@ -702,7 +580,7 @@ class OpenRouterClient(LocalLLMClient):
         logger.info(f"OpenRouter client initialized using {self.model}")
 
     def _callLLM(self, prompt: str, taskDescription: str = "OpenRouter request") -> Tuple[str, Optional[str]]:
-        """Make a chat completion request via OpenRouter."""
+        # Make a chat completion request via OpenRouter.
         try:
             completion = self.client.chat.completions.create(
                 extra_headers={
@@ -732,15 +610,12 @@ class OpenRouterClient(LocalLLMClient):
             return "", error
 
     def isAvailable(self) -> bool:
-        """Check if OpenRouter API is reachable (basic key check)."""
+        # Check if OpenRouter API is reachable (basic key check).
         return bool(self.apiKey) and len(self.apiKey) > 10
 
 
 def getLLMClient(baseUrl: Optional[str] = None, model: Optional[str] = None) -> LocalLLMClient:
-    """
-    Factory function for GENERAL LLM client (entities, summarization, pruning).
-    Respects the RELATIONSHIP_PROVIDER toggle for architectural consistency.
-    """
+    # Factory for general LLM client (entities, summarization, pruning).
     provider = settings.RELATIONSHIP_PROVIDER
     
     if provider == RelationshipProvider.OPENROUTER:
@@ -750,7 +625,7 @@ def getLLMClient(baseUrl: Optional[str] = None, model: Optional[str] = None) -> 
 
 
 def getRelationshipClient() -> LocalLLMClient:
-    """Factory function for RELATIONSHIP extraction client."""
+    # Factory function for RELATIONSHIP extraction client.
     provider = settings.RELATIONSHIP_PROVIDER
     
     if provider == RelationshipProvider.OPENROUTER:

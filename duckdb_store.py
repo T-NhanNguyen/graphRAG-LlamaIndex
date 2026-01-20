@@ -78,13 +78,7 @@ class CommunitySummary:
 
 
 class DuckDBStore:
-    """
-    Persistent DuckDB storage manager for GraphRAG.
-    
-    Stores all data in a single .duckdb file without in-memory HNSW indices.
-    Optimized for on-demand tool usage where 2-5s query time is acceptable
-    to avoid 30s+ startup overhead from loading HNSW into memory.
-    """
+    # Persistent DuckDB storage manager for GraphRAG. Stores data in a single .duckdb file with VSS support.
     
     # Schema version for migrations
     SCHEMA_VERSION = 1
@@ -287,20 +281,7 @@ class DuckDBStore:
         return None
     
     def getSourceDocumentByFilename(self, filePath: str) -> Optional[SourceDocument]:
-        """
-        Match document by filename and parent folder (portable path matching).
-        
-        Used when mount paths change but the actual files are the same.
-        Matches on: filename + immediate parent folder name.
-        
-        Example: /app/input/docs/report.md matches /app/data/docs/report.md
-        
-        Args:
-            filePath: New file path to match against stored paths
-            
-        Returns:
-            SourceDocument if a match is found, None otherwise
-        """
+        # Match document by filename and parent folder for portable path matching.
         from pathlib import Path
         path = Path(filePath)
         filename = path.name
@@ -524,11 +505,8 @@ class DuckDBStore:
     # - Entity Operations -
     
     def insertEntities(self, entities: List[Entity]) -> int:
-        """
-        Batch insert entities with conflict resolution.
-        If an entity with the same name exists, we merge them based on type priority.
-        Uses native DuckDB UPSERT (ON CONFLICT) for row-stability with Foreign Keys.
-        """
+        # Batch insert entities with conflict resolution and type priority merging.
+        # Uses native DuckDB UPSERT for row-stability.
         if not entities:
             return 0
         
@@ -681,18 +659,7 @@ class DuckDBStore:
         ]
     
     def getEntityIdsByNames(self, names: List[str]) -> Dict[str, str]:
-        """
-        Bulk fetch entity IDs by their names (case-insensitive).
-        
-        Used to resolve relationship entity IDs after entity upsert/merge,
-        since duplicate entities may be merged and original IDs discarded.
-        
-        Args:
-            names: List of entity names to look up
-            
-        Returns:
-            Dict mapping lowercase name -> persisted entity_id
-        """
+        # Bulk fetch entity IDs by their names (case-insensitive) to resolve post-upsert IDs.
         if not names:
             return {}
         
@@ -719,18 +686,7 @@ class DuckDBStore:
             return {}
     
     def getEntityNamesByIds(self, entityIds: List[str]) -> Dict[str, tuple[str, str]]:
-        """
-        Bulk fetch entity names and types by their IDs.
-        
-        Used for relationship enrichment - allows agents to construct reasoning chains
-        without additional lookups by adding entity names directly to relationship objects.
-        
-        Args:
-            entityIds: List of entity IDs to look up
-            
-        Returns:
-            Dict mapping entity_id -> (name, entity_type)
-        """
+        # Bulk fetch entity names and types by their IDs for relationship enrichment.
         if not entityIds:
             return {}
         
@@ -825,14 +781,7 @@ class DuckDBStore:
     # - Vector Operations -
     
     def vectorSimilaritySearch(self, queryEmbedding: List[float], topK: int = 10) -> List[Tuple[str, float, str]]:
-        """
-        Perform vector similarity search.
-        
-        Optimization hierarchy:
-        1. VSS HNSW (ANN search) - if extension loaded and index exists
-        2. Native SQL Brute-Force (linear scan) - using list_cosine_similarity
-        3. Python Fallback - if DuckDB array functions fail
-        """
+        # Perform vector similarity search using HNSW (VSS), SQL distance, or Python fallback.
         if not queryEmbedding:
             return []
             
@@ -1026,15 +975,8 @@ class DuckDBStore:
             return None
 
     def getEmbeddingCentroidForDocument(self, sourceDocumentId: str) -> Optional[List[float]]:
-        """
-        Calculate the semantic center of a single document's chunks.
-        
-        Args:
-            sourceDocumentId: The document to calculate centroid for
-            
-        Returns:
-            Centroid vector as list of floats, or None if no embeddings found
-        """
+        # Calculate the semantic center of a single document's chunks.
+        # Returns centroid vector or None if no embeddings found.
         try:
             res = self.connection.execute("""
                 SELECT embedding FROM documents 
@@ -1051,8 +993,7 @@ class DuckDBStore:
             logger.error(f"Failed to calculate per-document centroid for {sourceDocumentId}: {exc}")
             return None
 
-    def getOutlierChunkIds(self, centroid: List[float], threshold: float = 0.85) -> List[str]:
-        """Find chunk IDs that are distant from the provided centroid."""
+        # Find chunk IDs that are distant from the provided centroid.
         if not centroid:
             return []
             
@@ -1071,17 +1012,7 @@ class DuckDBStore:
             return []
 
     def getOutlierChunkIdsForDocument(self, sourceDocumentId: str, centroid: List[float], threshold: float) -> List[str]:
-        """
-        Find chunks within a document that are distant from that document's centroid.
-        
-        Args:
-            sourceDocumentId: Document to search within
-            centroid: The document's centroid embedding
-            threshold: Minimum cosine similarity to be considered valid (e.g., 0.85)
-            
-        Returns:
-            List of chunk IDs that are below the similarity threshold
-        """
+        # Find chunks within a document that are distant from its centroid.
         if not centroid:
             return []
             
@@ -1100,12 +1031,7 @@ class DuckDBStore:
             return []
 
     def pruneStrandedEntities(self) -> int:
-        """
-        Delete all entities that have no incoming or outgoing relationships.
-        
-        Returns:
-            Number of entities deleted
-        """
+        # Delete entities that have no incoming or outgoing relationships. Returns number deleted.
         try:
             # Count stranded entities first
             countResult = self.connection.execute("""
@@ -1118,7 +1044,6 @@ class DuckDBStore:
             """).fetchone()[0]
             
             if countResult > 0:
-                # Delete entities where entity_id is not found in source or target of relationships
                 self.connection.execute("""
                     DELETE FROM entities 
                     WHERE entity_id NOT IN (
@@ -1135,12 +1060,7 @@ class DuckDBStore:
             return 0
     
     def getCorpusStats(self) -> Dict[str, Any]:
-        """
-        Get comprehensive statistics about the corpus.
-        
-        Returns:
-            Dict with counts for documents, chunks, entities, relationships.
-        """
+        # Get comprehensive statistics about the corpus (docs, chunks, entities, relationships).
         try:
             stats = {}
             
@@ -1165,7 +1085,6 @@ class DuckDBStore:
             return {}
 
     def close(self) -> None:
-        # Close the database connection
         if self.connection:
             self.connection.close()
             logger.info("Database connection closed")
@@ -1182,19 +1101,7 @@ _storeInstances: Dict[str, DuckDBStore] = {}
 
 
 def getStore(dbPath: Optional[str] = None, refresh: bool = False) -> DuckDBStore:
-    """
-    Get or create a DuckDB store instance for the given path.
-    
-    Implements multi-instance caching to support concurrent access to
-    different databases without repeated initialization overhead.
-    
-    Args:
-        dbPath: Path to .duckdb file. Uses settings.DUCKDB_PATH if None.
-        refresh: If True, close existing connection and create new one.
-    
-    Returns:
-        DuckDBStore instance for the specified database.
-    """
+    # Get or create a DuckDB store instance with multi-instance caching for concurrent access.
     path = dbPath or settings.DUCKDB_PATH
     
     path = os.path.abspath(path)

@@ -6,7 +6,7 @@ TSON_FORMAT_IDENTIFIER = "tson"
 MINIMUM_ITEMS_FOR_COMPRESSION = 3  
 
 class TypeInference:
-    """Maps Python types to TSON schema type identifiers for data analysis."""
+    # Maps Python types to TSON schema type identifiers for data analysis.
     INT = "int"
     FLOAT = "float"
     BOOL = "bool"
@@ -14,9 +14,7 @@ class TypeInference:
     
     @staticmethod
     def inferFromValue(value: Any) -> str:
-        """
-        Infer TSON type string from a Python value.
-        """
+        # Infer TSON type string from a Python value.
         if isinstance(value, bool):  # Must check bool before int (bool is a subclass of int)
             return TypeInference.BOOL
         if isinstance(value, (int, np.integer)):
@@ -26,18 +24,13 @@ class TypeInference:
         return TypeInference.STRING
 
 def isUniformDictList(dataList: List[Any]) -> bool:
-    """
-    Check if the list contains enough dictionaries to justify TSON compression.
-    """
+    # Check if the list contains enough dictionaries to justify TSON compression.
     if not dataList or len(dataList) < MINIMUM_ITEMS_FOR_COMPRESSION:
         return False
     return all(isinstance(item, dict) for item in dataList)
 
 def convertToTSON(dataList: List[Dict[str, Any]]) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
-    """
-    Convert a list of dicts to TSON tabular compression to save tokens.
-    Handles sparse dictionaries by identifying the union of all keys.
-    """
+    # Convert a list of dicts to TSON tabular compression to save tokens.
     if not isUniformDictList(dataList):
         return dataList
     

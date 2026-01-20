@@ -10,17 +10,11 @@ from graphrag_config import settings
 logger = logging.getLogger(__name__)
 
 class GarbageFilter:
-    """
-    Multi-stage filtering for knowledge graph chunks.
-    Implements preprocessing (stateless) and advanced (stateful/LLM) filters.
-    """
+    # Multi-stage filtering for knowledge graph chunks (stateless and LLM-based).
 
     @staticmethod
     def calculateRepetitionRatio(text: str) -> float:
-        """
-        Calculate the ratio of character repetition in text.
-        Ignores whitespace to avoid false positives on highly indented/formatted text.
-        """
+        # Calculate character repetition ratio, ignoring whitespace.
         if not text:
             return 0.0
         # Filter out whitespace before counting
@@ -35,7 +29,7 @@ class GarbageFilter:
 
     @staticmethod
     def calculateEntropy(text: str) -> float:
-        """Calculate Shannon entropy for a string to measure information density."""
+        # Calculate Shannon entropy to measure information density.
         if not text:
             return 0.0
         charCounts = Counter(text)
@@ -45,7 +39,7 @@ class GarbageFilter:
 
     @staticmethod
     def calculateMalformedRatio(text: str) -> float:
-        """Detect broken ligatures (e.g., 'fi ', 'fl ') common in poor PDF extraction."""
+        # Detect broken ligatures (e.g., 'fi', 'fl') common in poor PDF extraction.
         if not text:
             return 0.0
         # Common broken ligatures in English (f+i, f+l, f+f, etc.)
@@ -62,10 +56,7 @@ class GarbageFilter:
 
     @staticmethod
     def calculateWhitespaceDensity(text: str) -> float:
-        """
-        Calculate the ratio of whitespace characters to total text length.
-        Useful for identifying 'diluted' chunks where formatting noise outweighs content.
-        """
+        # Calculate whitespace density to identify 'diluted' or poorly formatted chunks.
         if not text:
             return 0.0
         totalChars = len(text)
@@ -74,15 +65,7 @@ class GarbageFilter:
         return densityRatio
 
     def isGarbagePre(self, text: str) -> Optional[str]:
-        """
-        Run fast, deterministic preprocessing filters on a text chunk.
-        
-        Args:
-            text: The text chunk to evaluate.
-            
-        Returns:
-            A string describing the failure reason if it's garbage, else None.
-        """
+        # Run fast deterministic preprocessing filters. Returns failure reason if garbage, else None.
         # 1. Repetition Filter: Catches character 'stuttering' or line noise
         repetitionRatio = self.calculateRepetitionRatio(text)
         if repetitionRatio > settings.FILTER_REPETITION_THRESHOLD:
@@ -108,7 +91,7 @@ class GarbageFilter:
         return None
 
 class GarbageLogger:
-    """Utility to log skipped garbage chunks for technical tracking and manual audit."""
+    # Utility to log skipped garbage chunks for tracking and auditing.
     
     def __init__(self, logPath: str = None):
         self.logPath = logPath or os.path.join(settings.OUTPUT_DIR, "pruning_log.json")
@@ -118,7 +101,7 @@ class GarbageLogger:
         self.prunedLogs = []
 
     def log(self, chunkId: str, text: str, reason: str, metadata: Dict[str, Any] = None):
-        """Append a garbage chunk to the log and save an individual file for inspection."""
+        # Log a garbage chunk and save individual evidence for inspection.
         logEntry = {
             "chunkId": chunkId,
             "reason": reason,
@@ -130,7 +113,7 @@ class GarbageLogger:
         self._saveIndividualEvidence(chunkId, text, reason)
 
     def _saveIndividualEvidence(self, chunkId: str, text: str, reason: str):
-        """Save full pruned text to an individual Markdown file for easy auditing."""
+        # Save full pruned text to a Markdown file for auditing.
         try:
             # Create a clean filename from the reason
             safeReason = "".join(char for char in reason[:20] if char.isalnum() or char in " -_").strip()
@@ -145,13 +128,12 @@ class GarbageLogger:
             logger.error(f"Failed to save individual pruned file: {exc}")
 
     def _persistToDisk(self):
-        """Save logs to disk in both JSON (data) and JS (viewer) formats."""
+        # Persist logs to disk in JSON and JS (viewer) formats.
         try:
-            # 1. Standard JSON log for processing
             with open(self.logPath, 'w', encoding='utf-8') as jsonFile:
                 json.dump(self.prunedLogs, jsonFile, indent=2)
-            
-            # 2. JS Wrapper for the interactive viewer (bypasses CORS)
+
+            # JS Wrapper for interactive viewer
             jsLogPath = self.logPath.replace(".json", ".js")
             with open(jsLogPath, 'w', encoding='utf-8') as jsFile:
                 jsFile.write(f"window.PRUNING_DATA = {json.dumps(self.prunedLogs, indent=2)};")

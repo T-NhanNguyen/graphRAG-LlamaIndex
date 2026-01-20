@@ -1,12 +1,4 @@
-"""
-BM25 Indexing Module - Sparse vector indexing for keyword-based retrieval.
-
-Implements Okapi BM25 scoring with:
-- Simple whitespace tokenization (can extend with NLTK)
-- Term frequency calculation per chunk
-- Document frequency tracking for IDF
-- Integration with DuckDB storage
-"""
+# BM25 Indexing Module - Sparse vector indexing for keyword-based retrieval.
 import re
 import math
 import logging
@@ -15,48 +7,33 @@ from collections import Counter
 
 from graphrag_config import settings
 from duckdb_store import DuckDBStore, DocumentChunk
+from stop_words import get_stop_words
 
 logger = logging.getLogger(__name__)
 
 
 class BM25Indexer:
-    """
-    BM25 sparse vector indexer for hybrid retrieval.
+    # BM25 sparse vector indexer for hybrid retrieval. Tokenizes docs and stores stats for scoring.
     
-    Tokenizes documents, calculates term frequencies, and stores
-    sparse representations for later BM25 scoring during retrieval.
-    """
-    
-    # Stopwords to filter (basic English set)
-    STOPWORDS = {
-        'a', 'an', 'the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
-        'of', 'with', 'by', 'from', 'is', 'are', 'was', 'were', 'be', 'been',
-        'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would',
-        'could', 'should', 'may', 'might', 'must', 'shall', 'can', 'this',
-        'that', 'these', 'those', 'i', 'you', 'he', 'she', 'it', 'we', 'they',
-        'what', 'which', 'who', 'when', 'where', 'why', 'how', 'all', 'each',
-        'every', 'both', 'few', 'more', 'most', 'other', 'some', 'such', 'no',
-        'nor', 'not', 'only', 'own', 'same', 'so', 'than', 'too', 'very', 's',
-        't', 'just', 'now', 'also', 'as', 'if'
-    }
-    
-    def __init__(self, store: DuckDBStore):
-        """Initialize with DuckDB store reference."""
+    def __init__(self, store: DuckDBStore, language: str = None):
+        # Initialize with DuckDB store and load language-specific stopwords.
         self.store = store
         self.k1 = settings.BM25_K1
         self.b = settings.BM25_B
+        
+        # Use configured language or default to English
+        lang = language or settings.BM25_LANGUAGE
+        
+        # Load stopwords for specified language (supports: en, zh, ja, ko, fr, de, es, etc.)
+        try:
+            self.stopwords = set(get_stop_words(lang))
+            logger.info(f"Loaded {len(self.stopwords)} stopwords for language '{lang}'")
+        except Exception as e:
+            logger.warning(f"Failed to load stopwords for '{lang}': {e}. Using English fallback.")
+            self.stopwords = set(get_stop_words(lang))
     
     def tokenize(self, text: str) -> List[str]:
-        """
-        Tokenize text into lowercase terms with basic cleaning.
-        Supports multilingual text including CJK characters.
-        
-        Args:
-            text: Raw text to tokenize
-            
-        Returns:
-            List of lowercase tokens (stopwords removed)
-        """
+        # Tokenize text into lowercase terms with cleaning. Supports multilingual/CJK characters.
         if not text:
             return []
             
@@ -72,7 +49,7 @@ class BM25Indexer:
         
         filteredTokens = []
         for t in tokens:
-            if t in self.STOPWORDS:
+            if t in self.stopwords:
                 continue
             
             # Keep CJK characters or words with length > 1
@@ -82,22 +59,11 @@ class BM25Indexer:
         return filteredTokens
     
     def calculateTermFrequencies(self, tokens: List[str]) -> Dict[str, int]:
-        """Calculate term frequency for each unique token."""
+        # Calculate term frequency for each unique token.
         return dict(Counter(tokens))
     
     def indexChunks(self, chunks: List[DocumentChunk]) -> Dict[str, int]:
-        """
-        Index chunks for BM25 retrieval.
-        
-        Tokenizes each chunk, calculates TF, and stores in DuckDB.
-        Returns term -> document frequency mapping for corpus stats.
-        
-        Args:
-            chunks: List of Chunk objects to index
-            
-        Returns:
-            Dict mapping each term to its document frequency
-        """
+        # Index chunks for BM25 retrieval and return term document frequencies.
         if not chunks:
             return {}
         
@@ -135,15 +101,9 @@ class BM25Indexer:
 
 
 class BM25Scorer:
-    """
-    BM25 scoring engine for query-time retrieval.
-    
-    Calculates BM25 scores using pre-computed term statistics
-    stored in DuckDB.
-    """
+    # BM25 scoring engine for query-time retrieval using DuckDB stats.
     
     def __init__(self, store: DuckDBStore):
-        """Initialize with DuckDB store and load corpus stats."""
         self.store = store
         self.k1 = settings.BM25_K1
         self.b = settings.BM25_B
@@ -152,23 +112,16 @@ class BM25Scorer:
         self._loadCorpusStats()
     
     def _loadCorpusStats(self) -> None:
-        """Load corpus-level statistics from DuckDB."""
+        # Load corpus-level statistics from DuckDB.
         self.totalDocs, self.avgDocLength, self.termDocFreqs = self.store.getBm25Stats()
         logger.info(f"Loaded BM25 stats: {self.totalDocs} docs, avg length {self.avgDocLength:.1f}")
     
     def refreshStats(self) -> None:
-        """Reload corpus stats after new documents are indexed."""
+        # Reload corpus stats after new documents are indexed.
         self._loadCorpusStats()
     
     def _idf(self, term: str) -> float:
-        """
-        Calculate Inverse Document Frequency for a term.
-        
-        Uses the standard BM25 IDF formula:
-        log((N - df + 0.5) / (df + 0.5) + 1)
-        
-        where N = total docs, df = doc frequency of term
-        """
+        # Calculate Inverse Document Frequency (IDF) for a term using BM25 formula.
         df = self.termDocFreqs.get(term, 0)
         
         if df == 0:
@@ -180,17 +133,7 @@ class BM25Scorer:
     
     def scoreDocument(self, queryTokens: List[str], termFrequencies: Dict[str, int], 
                       docLength: int) -> float:
-        """
-        Calculate BM25 score for a single document.
-        
-        Args:
-            queryTokens: Tokenized query terms
-            termFrequencies: Term -> frequency mapping for the document
-            docLength: Number of tokens in the document
-            
-        Returns:
-            BM25 score (higher = more relevant)
-        """
+        # Calculate BM25 score for a single document.
         if self.avgDocLength == 0 or self.totalDocs == 0:
             return 0.0
         
@@ -214,16 +157,7 @@ class BM25Scorer:
         return score
     
     def search(self, query: str, topK: int = None) -> List[Tuple[str, float, str]]:
-        """
-        Search corpus using BM25 scoring.
-        
-        Args:
-            query: Natural language query
-            topK: Number of results to return (defaults to settings.TOP_K)
-            
-        Returns:
-            List of (chunk_id, bm25_score, chunk_text) tuples
-        """
+        # Search corpus using BM25 scoring. Returns ranked chunk IDs and scores.
         topK = topK or settings.TOP_K
         
         # Tokenize query
@@ -261,29 +195,12 @@ class BM25Scorer:
 
 
 def createBm25Index(store: DuckDBStore, chunks: List[DocumentChunk]) -> BM25Indexer:
-    """
-    Convenience function to index chunks for BM25.
-    
-    Args:
-        store: DuckDB store instance
-        chunks: Chunks to index
-        
-    Returns:
-        BM25Indexer instance
-    """
+    # Convenience function to index chunks for BM25.
     indexer = BM25Indexer(store)
     indexer.indexChunks(chunks)
     return indexer
 
 
 def getBm25Scorer(store: DuckDBStore) -> BM25Scorer:
-    """
-    Get a BM25 scorer with loaded corpus statistics.
-    
-    Args:
-        store: DuckDB store instance
-        
-    Returns:
-        BM25Scorer ready for querying
-    """
+    # Get a BM25 scorer with loaded corpus statistics.
     return BM25Scorer(store)

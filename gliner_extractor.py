@@ -12,24 +12,10 @@ from duckdb_store import Entity, DocumentChunk
 logger = logging.getLogger(__name__)
 
 class GLiNEREntityExtractor(BaseEntityExtractor):
-    """
-    Local entity extraction using the GLiNER framework.
-    Uses bidirectional transformer encoders for zero-shot NER extraction.
-    
-    Adheres to design philosophy:
-    - Readability: Clear intent in method names and logic.
-    - Efficiency: Supports batched processing.
-    - Observability: Logs extraction performance and entity counts.
-    """
+    # Local entity extraction using GLiNER transformer encoders for zero-shot NER extraction.
     
     def __init__(self, modelName: str = None, threshold: float = None):
-        """
-        Initialize GLiNER extractor.
-        
-        Args:
-            modelName: GLiNER model ID (defaults to settings.GLINER_MODEL)
-            threshold: Confidence threshold (defaults to settings.FILTER_QUALITY_THRESHOLD)
-        """
+        # Initialize GLiNER extractor with optional model name and confidence threshold.
         self.modelName = modelName or settings.GLINER_MODEL
         # Using FILTER_QUALITY_THRESHOLD as the confidence cutoff as per user feedback
         self.threshold = threshold or settings.FILTER_QUALITY_THRESHOLD
@@ -69,17 +55,7 @@ class GLiNEREntityExtractor(BaseEntityExtractor):
             raise
 
     def extractEntities(self, text: str, chunkId: str, sourceDocumentId: str = "") -> List[Entity]:
-        """
-        Extract entities from a single chunk of text.
-        
-        Args:
-            text: Source text chunk
-            chunkId: ID of the chunk
-            sourceDocumentId: ID of the source document
-            
-        Returns:
-            List of normalized Entity objects
-        """
+        # Extract normalized entities from a single text chunk.
         startTime = time.time()
         
         # predict_entities returns a list of dicts: {"start", "end", "text", "label", "score"}
@@ -102,16 +78,7 @@ class GLiNEREntityExtractor(BaseEntityExtractor):
         return entities
 
     def extractEntitiesBatch(self, chunks: List[DocumentChunk]) -> Dict[str, List[Entity]]:
-        """
-        Extract entities from multiple chunks in a single pass where supported.
-        GLiNER predict_entities can take a list of strings for batching.
-        
-        Args:
-            chunks: List of DocumentChunk objects
-            
-        Returns:
-            Mapping of chunkId to their extracted Entity lists
-        """
+        # Extract entities from multiple chunks in a single pass.
         if not chunks:
             return {}
             
@@ -138,7 +105,6 @@ class GLiNEREntityExtractor(BaseEntityExtractor):
                 max_length=settings.GLINER_MAX_LENGTH
             )
             
-            # Filter out low-quality or overly long string extractions
             # Real entities are rarely longer than 50 characters
             filteredRawExtractions = [
                 e for e in rawEntities 
@@ -155,7 +121,7 @@ class GLiNEREntityExtractor(BaseEntityExtractor):
         return results
 
     def _normalizeRawEntities(self, rawEntities: List[Dict[str, Any]], chunkId: str, sourceDocumentId: str) -> List[Entity]:
-        """Map GLiNER raw output to the standard Entity schema."""
+        # Map GLiNER raw output to the standard Entity schema.
         entities = []
         for rawEntityData in rawEntities:
             try:

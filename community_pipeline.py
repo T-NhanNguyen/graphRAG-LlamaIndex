@@ -113,7 +113,7 @@ class LeidenPipeline:
             logger.info(f"Successfully persisted {len(all_summaries)} community summaries")
 
     def run(self):
-        """Full pipeline execution."""
+        # Full pipeline execution.
         hierarchical_map = self.detectCommunities()
         if hierarchical_map:
             self.summarizeCommunities(hierarchical_map)

@@ -1,6 +1,4 @@
-"""
-Fusion Retrieval Engine - Hybrid BM25 + Vector search with RRF scoring.
-"""
+# Fusion Retrieval Engine - Hybrid BM25 + Vector search with RRF scoring.
 import logging
 from typing import List, Dict, Tuple, Optional
 from dataclasses import dataclass
@@ -16,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class RetrievalResult:
-    """Single retrieval result with scores and metadata."""
+    # Single retrieval result with scores and metadata.
     chunkId: str
     text: str
     vectorScore: float = 0.0
@@ -28,23 +26,10 @@ class RetrievalResult:
 
 
 class FusionRetriever:
-    """
-    Hybrid retrieval combining BM25 and vector similarity.
-    
-    Supports three fusion strategies:
-    1. Alpha blending: α*vector + (1-α)*bm25
-    2. Reciprocal Rank Fusion (RRF): Σ 1/(k + rank_i)
-    3. Combined: Normalize scores then apply alpha + RRF
-    """
+    # Hybrid retrieval combining BM25 and vector similarity with Alpha blending and RRF.
     
     def __init__(self, store: DuckDBStore, embeddingFunction=None):
-        """
-        Initialize fusion retriever.
-        
-        Args:
-            store: DuckDB storage instance
-            embeddingFunction: Callable that takes text -> embedding vector
-        """
+        # Initialize fusion retriever with store and optional embedding function.
         self.store = store
         self.embeddingFunction = embeddingFunction
         self.bm25Scorer = BM25Scorer(store)
@@ -55,11 +40,11 @@ class FusionRetriever:
         self.topK = settings.TOP_K
     
     def setEmbeddingFunction(self, func) -> None:
-        """Set or update the embedding function."""
+        # Set or update the embedding function.
         self.embeddingFunction = func
     
     def _normalizeScores(self, scores: List[float]) -> List[float]:
-        """Min-max normalize scores to [0, 1] range."""
+        # Min-max normalize scores to [0, 1] range.
         # Filter out None values to prevent min/max errors
         valid_scores = [float(s) for s in scores if s is not None]
         
@@ -75,28 +60,13 @@ class FusionRetriever:
         return [(s - minScore) / (maxScore - minScore) for s in valid_scores]
     
     def _calculateRrfScore(self, ranks: List[int]) -> float:
-        """
-        Calculate Reciprocal Rank Fusion score.
-        
-        RRF = Σ 1/(k + rank_i) where k is a constant (default 60)
-        Higher RRF = better ranking across methods.
-        """
+        # Calculate Reciprocal Rank Fusion (RRF) score based on method ranks. 
+        # Higher RRF = better ranking across methods
         return sum(1.0 / (self.rrfK + rank) for rank in ranks if rank > 0)
     
     def search(self, query: str, topK: Optional[int] = None, 
                useRrf: bool = True, useAlpha: bool = True) -> List[RetrievalResult]:
-        """
-        Perform hybrid fusion retrieval.
-        
-        Args:
-            query: Natural language query
-            topK: Number of results (default from settings)
-            useRrf: Whether to apply RRF scoring
-            useAlpha: Whether to apply alpha blending
-            
-        Returns:
-            List of RetrievalResult sorted by fused score
-        """
+        # Perform hybrid fusion retrieval. Returns sorted list of RetrievalResults.
         topK = topK or self.topK
         
         if not self.embeddingFunction:
@@ -107,23 +77,16 @@ class FusionRetriever:
         vectorResults = self._vectorSearch(query, topK * 3)  # Over-fetch for fusion
         bm25Results = self._bm25Search(query, topK * 3)
         
-        # Merge results
+        # Merge results, sort, and enrich with embeddings.
         fusedResults = self._fuseResults(vectorResults, bm25Results, useRrf, useAlpha)
-        
-        # Sort by fused score and return top K
         fusedResults.sort(key=lambda r: r.fusedScore, reverse=True)
         topResults = fusedResults[:topK]
-        
-        # Enrich with embeddings for downstream deduplication
         self._enrichWithEmbeddings(topResults)
         
         return topResults
     
     def _enrichWithEmbeddings(self, results: List[RetrievalResult]) -> None:
-        """
-        Bulk fetch embeddings for results (in-place update).
-        Required for downstream deduplication by the query engine.
-        """
+        # Bulk fetch embeddings for results (in-place update) for deduplication.
         if not results:
             return
         
@@ -144,7 +107,7 @@ class FusionRetriever:
             logger.warning(f"Failed to enrich results with embeddings: {exc}")
     
     def _vectorSearch(self, query: str, k: int) -> List[Tuple[str, float, str]]:
-        """Perform vector similarity search."""
+        # Perform vector similarity search.
         if not self.embeddingFunction:
             return []
         
@@ -157,7 +120,7 @@ class FusionRetriever:
             return []
     
     def _bm25Search(self, query: str, k: int) -> List[Tuple[str, float, str]]:
-        """Perform BM25 keyword search."""
+        # Perform BM25 keyword search.
         try:
             return self.bm25Scorer.search(query, k)
         except Exception as exc:
@@ -165,7 +128,7 @@ class FusionRetriever:
             return []
     
     def _bm25OnlySearch(self, query: str, topK: int) -> List[RetrievalResult]:
-        """Fallback to BM25-only search."""
+        # Fallback to BM25-only search.
         bm25Results = self._bm25Search(query, topK)
         return [
             RetrievalResult(
@@ -181,12 +144,7 @@ class FusionRetriever:
     def _fuseResults(self, vectorResults: List[Tuple[str, float, str]], 
                      bm25Results: List[Tuple[str, float, str]],
                      useRrf: bool, useAlpha: bool) -> List[RetrievalResult]:
-        """
-        Fuse vector and BM25 results into unified ranking.
-        
-        Handles documents that appear in only one of the result sets
-        by assigning worst-case rank for the missing method.
-        """
+        # Fuse vector and BM25 results, handling missing entries with worst-case ranks.
         # Build lookup maps
         vectorMap: Dict[str, Tuple[float, int, str]] = {}
         for rank, (chunkId, score, text) in enumerate(vectorResults, 1):
@@ -279,12 +237,7 @@ class FusionRetriever:
         return results
     
     def searchWithEntityContext(self, query: str, topK: Optional[int] = None) -> Dict:
-        """
-        Fusion search with entity extraction from results.
-        
-        Returns chunks plus any entities mentioned in top results.
-        This enables graph-enhanced retrieval for local search.
-        """
+        # Fusion search with entity extraction from graph for local context.
         results = self.search(query, topK)
         
         if not results:
@@ -304,7 +257,7 @@ class FusionRetriever:
                 # Get relationships for this entity
                 rels = self.store.getRelationshipsForEntity(entity.entityId)
                 
-                # This ensures cleaner retrieval results by focusing on the connected knowledge graph.
+                # Focus on connected knowledge graph.
                 if rels:
                     entities.append(entity)
                     relationships.extend(rels)
@@ -325,14 +278,5 @@ class FusionRetriever:
 
 
 def getFusionRetriever(store: DuckDBStore, embeddingFunction=None) -> FusionRetriever:
-    """
-    Factory function for fusion retriever.
-    
-    Args:
-        store: DuckDB store instance
-        embeddingFunction: Optional callable for embeddings
-        
-    Returns:
-        Configured FusionRetriever instance
-    """
+    # Factory function for FusionRetriever.
     return FusionRetriever(store, embeddingFunction)

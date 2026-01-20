@@ -1,19 +1,4 @@
-"""
-GraphRAG Indexing Pipeline - End-to-end document processing.
-
-Orchestrates:
-1. Markdown file ingestion
-2. Text chunking
-3. Embedding generation (parallel batched)
-4. BM25 sparse indexing
-5. Entity/relationship extraction (LLM)
-6. DuckDB persistence
-
-Following coding framework guidelines:
-- Bulk operations for efficiency
-- Progress logging for observability
-- Configurable parameters
-"""
+# GraphRAG Indexing Pipeline - Orchestrates ingestion, chunking, embeddings, BM25, and entity extraction.
 import os
 import time
 import uuid
@@ -47,7 +32,7 @@ logging.basicConfig(
 
 @dataclass
 class IndexingStats:
-    """Statistics from indexing run."""
+    # Statistics from indexing run.
     documentsProcessed: int = 0
     documentsSkipped: int = 0
     chunksCreated: int = 0
@@ -58,13 +43,7 @@ class IndexingStats:
 
 
 class SemanticChunker:
-    """
-    Semantic chunker that RESPECTS Markdown section boundaries.
-    
-    Two-phase approach:
-    1. Split on headers FIRST (sections are never merged across headers)
-    2. Split oversized sections using paragraph/sentence boundaries
-    """
+    # Semantic chunker that respects Markdown section boundaries using a two-phase split approach.
     
     def __init__(self, chunkSize: int = None, chunkOverlap: int = None):
         self.chunkSize = chunkSize or settings.CHUNK_SIZE
@@ -72,15 +51,7 @@ class SemanticChunker:
         self.minChunkLength = settings.MIN_CHUNK_LENGTH
     
     def chunk(self, text: str) -> List[str]:
-        """
-        Split text respecting section boundaries and cleaning artifacts.
-        
-        Args:
-            text: Full Markdown text to chunk
-            
-        Returns:
-            List of text chunks where sections are never merged
-        """
+        # Split text respecting section boundaries and cleaning artifacts. Returns list of chunks.
         # Phase 0: Pre-process: strip artifacts and normalize whitespace
         text = self._sanitizeArtifacts(text)
         cleanedText = self._collapseExcessiveWhitespace(text)
@@ -106,10 +77,7 @@ class SemanticChunker:
         return chunks
     
     def _splitOnHeaders(self, text: str) -> List[str]:
-        """
-        Split on Markdown headers using fast line-by-line parsing.
-        Each section stays separate - sections are NEVER merged.
-        """
+        # Split on Markdown headers. Each section stays separate and headers are never merged.
         sections = []
         currentLines = []
         
@@ -146,10 +114,7 @@ class SemanticChunker:
         return sections
     
     def _splitOversizedSection(self, section: str) -> List[str]:
-        """
-        Split an oversized section using paragraph/sentence boundaries.
-        Uses single-pass algorithm for speed.
-        """
+        # Split an oversized section using paragraph/sentence boundaries.
         chunks = []
         start = 0
         textLength = len(section)
@@ -176,7 +141,7 @@ class SemanticChunker:
         return chunks
     
     def _findBreakPoint(self, text: str, start: int, end: int) -> int:
-        """Find best break point: paragraph > sentence > newline > space."""
+        # Find best break point: paragraph > sentence > newline > space.
         searchStart = start + (self.chunkSize // 2)
         searchRange = text[searchStart:end]
         
@@ -204,7 +169,7 @@ class SemanticChunker:
         return end
     
     def _collapseExcessiveWhitespace(self, rawText: str) -> str:
-        """Normalize noisy PDF/Statutory extractions while preserving structure."""
+        # Normalize noisy extractions while preserving structure.
         # Collapse massive newline gaps (limit to double newline for parity)
         text = re.sub(r'\n{3,}', '\n\n', rawText)
         # Collapse massive horizontal gaps but preserve some indentation (up to 4 spaces)
@@ -212,7 +177,7 @@ class SemanticChunker:
         return text
 
     def _sanitizeArtifacts(self, text: str) -> str:
-        """Strip persistent metadata noise like Page markers."""
+        # Strip persistent metadata noise like Page markers.
         # Strip [[Page \d+ STAT. \d+]]
         text = re.sub(r'\[\[Page \d+ STAT\. \d+\]\]', '', text)
         # Strip other common noisy markers if needed (placeholder for future regexes)
@@ -224,31 +189,14 @@ TextChunker = SemanticChunker
 
 
 class GraphRAGIndexer:
-    """
-    Main indexing pipeline for GraphRAG.
-    
-    Processes markdown files and builds:
-    - Document/chunk storage
-    - Dense vector embeddings
-    - BM25 sparse vectors
-    - Entity knowledge graph
-    """
+    # Main indexing pipeline for GraphRAG: processes documents into chunks, embeddings, and entities.
     
     def __init__(self, store: Optional[DuckDBStore] = None,
                  embeddings: Optional[DockerModelRunnerEmbeddings] = None,
                  llmClient: Optional[LocalLLMClient] = None,
                  entityExtractor: Optional[BaseEntityExtractor] = None,
                  enableEntityExtraction: bool = True):
-        """
-        Initialize indexer with optional component injection.
-        
-        Args:
-            store: DuckDB storage (creates new if None)
-            embeddings: Embedding provider (creates new if None)
-            llmClient: LLM for entity extraction (creates new if None)
-            entityExtractor: Custom entity extractor (standardizes model switching)
-            enableEntityExtraction: Whether to run LLM entity extraction
-        """
+        # Initialize indexer with optional component injection.
         self.store = store or getStore()
         self.embeddings = embeddings or getEmbeddings()
         self.llmClient = llmClient or getLLMClient()
@@ -263,7 +211,7 @@ class GraphRAGIndexer:
         self.stats = IndexingStats()
     
     def _loadFileContent(self, filePath: str) -> Optional[str]:
-        """Load file content."""
+        # Load file content.
         try:
             with open(filePath, 'r', encoding='utf-8') as f:
                 return f.read()
@@ -272,7 +220,7 @@ class GraphRAGIndexer:
             return None
     
     def _discoverFiles(self, inputDir: str) -> List[str]:
-        """Find all markdown and text files in input directory."""
+        # Find all markdown and text files in input directory.
         inputPath = Path(inputDir)
         
         if not inputPath.exists():
@@ -288,21 +236,12 @@ class GraphRAGIndexer:
         return [str(f) for f in allFiles]
     
     def isAlreadyIndexed(self, filePath: str) -> bool:
-        """Check if a source document path has already been indexed."""
+        # Check if a source document path has already been indexed.
         existing = self.store.getSourceDocumentByPath(filePath)
         return existing is not None
     
     def indexDocument(self, filePath: str, skipIfExists: bool = True) -> tuple[Optional[str], str]:
-        """
-        Index a single document.
-        
-        Args:
-            filePath: Path to file
-            skipIfExists: If True, skip documents already marked 'complete'
-            
-        Returns:
-            Tuple of (docId, status). docId is None if document is already complete and skipIfExists is True.
-        """
+        # Index a single document. Returns tuple of (docId, status).
         # Check if already indexed (exact path match first)
         existing = self.store.getSourceDocumentByPath(filePath)
         
@@ -381,15 +320,7 @@ class GraphRAGIndexer:
         return [] # logic moved into indexDocument for atomicity
     
     def generateEmbeddings(self, chunks: List[DocumentChunk]) -> int:
-        """
-        Generate and store embeddings for chunks.
-        
-        Args:
-            chunks: List of DocumentChunks to embed
-            
-        Returns:
-            Number of embeddings stored
-        """
+        # Generate and store embeddings for chunks. Returns number of embeddings stored.
         if not chunks:
             return 0
         
@@ -408,7 +339,7 @@ class GraphRAGIndexer:
         return len(embeddings)
     
     def indexBM25(self, chunks: List[DocumentChunk]) -> None:
-        """Index chunks for BM25 sparse retrieval."""
+        # Index chunks for BM25 sparse retrieval.
         if not chunks:
             return
         
@@ -418,17 +349,7 @@ class GraphRAGIndexer:
         logger.info(f"Indexed {len(termStats)} unique terms for BM25")
     
     def extractEntities(self, chunks: List[DocumentChunk]) -> None:
-        """
-        Extract entities and relationships from chunks using LLM.
-        
-        Uses hybrid batching strategy:
-        1. Process documents sequentially (prevents cross-doc contamination)
-        2. Within each document, batch chunks together (reduces overhead)
-        3. Concurrent batch requests within document scope
-        
-        Args:
-            chunks: Chunks to process
-        """
+        # Extract entities and relationships from chunks using hybrid batching strategy.
         if not self.enableEntityExtraction:
             logger.info("Entity extraction disabled, skipping")
             return
@@ -577,16 +498,7 @@ class GraphRAGIndexer:
     
     def pruneNoise(self, chunkIds: Optional[List[str]] = None, 
                    runLLMScore: bool = False) -> Dict[str, int]:
-        """
-        Prune non-meaningful chunks based on post-extraction metrics.
-        
-        Args:
-            chunkIds: Specific chunks to evaluate (defaults to all)
-            runLLMScore: Whether to run the expensive LLM quality scoring
-            
-        Returns:
-            Dict with pruning stats
-        """
+        # Prune non-meaningful chunks based on post-extraction metrics. Returns pruning stats.
         logger.info("Starting noise pruning phase...")
         chunks = self.store.getAllChunks() if chunkIds is None else \
                  [c for c in self.store.getAllChunks() if c.chunkId in chunkIds]
@@ -687,21 +599,12 @@ class GraphRAGIndexer:
         }
 
     def resetDatabase(self) -> Dict[str, int]:
-        """
-        Nuclear reset: Delete the database file and recreate with current config.
-        This avoids FK constraint issues and guarantees fresh schema dimensions.
-        
-        Returns:
-            Dict of table names to deleted row counts
-        """
+        # Delete the database file and recreate with current config. Returns table name to deleted row counts.
         logger.warning("Resetting database - deleting file for clean recreation")
         return self.store.resetDatabase()
     
     def indexDirectory(self, inputDir: str = None, skipIfExists: bool = True) -> IndexingStats:
-        """
-        Index all markdown and text files in a directory.
-        Now with automatic pipeline resume based on document status.
-        """
+        # Index all markdown and text files in a directory with automatic pipeline resume.
         inputDir = inputDir or settings.INPUT_DIR
         allFiles = self._discoverFiles(inputDir)
         if not allFiles:
@@ -769,15 +672,7 @@ class GraphRAGIndexer:
         return self.stats
     
     def indexFile(self, filePath: str) -> IndexingStats:
-        """
-        Index a single file.
-        
-        Args:
-            filePath: Path to markdown file
-            
-        Returns:
-            Indexing statistics
-        """
+        # Index a single file. Returns indexing statistics.
         docId = self.indexDocument(filePath)
         
         if docId:
@@ -790,7 +685,7 @@ class GraphRAGIndexer:
 
 
 def main():
-    """CLI entry point for indexing."""
+    # CLI entry point for indexing.
     start_time = time.time()
     import argparse
     

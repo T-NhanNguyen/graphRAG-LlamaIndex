@@ -1,18 +1,11 @@
-"""
-GraphRAG Configuration - Centralized constants for agentic tool development.
-
-Following coding framework guidelines:
-- Uppercase constants with descriptive names
-- Enums for categorical values
-- Typed parameters for LLM tool compatibility
-"""
+# GraphRAG Configuration - Centralized constants and settings for engine and agentic tools.
 from enum import Enum
 from typing import Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class EntityType(str, Enum):
-    """Entity classification types for knowledge graph nodes."""
+    # Entity classification types for knowledge graph nodes.
     PERSON = "PERSON"
     ORGANIZATION = "ORGANIZATION"
     CONCEPT = "CONCEPT"
@@ -23,37 +16,33 @@ class EntityType(str, Enum):
 
 
 class EmbeddingProvider(str, Enum):
-    """Supported embedding providers."""
+    # Supported embedding providers.
     DOCKER_MODEL_RUNNER = "docker_model_runner"
     OPENAI = "openai"
     OLLAMA = "ollama"
 
 
 class SearchType(str, Enum):
-    """Query search strategy."""
+    # Query search strategy.
     FIND_CONNECTIONS = "find_connections" # Hybrid + Graph traversal (local context)
     EXPLORE_THEMATIC = "explore_thematic" # Community-level reasoning (global themes)
     KEYWORD_SEARCH = "keyword_search"     # BM25 + vector hybrid text search only
 
 
 class ExtractionMode(str, Enum):
-    """Entity extraction strategies."""
+    # Entity extraction strategies.
     LLM_ONLY = "local_llm"       # Default: Traditional LLM
     HYBRID = "gliner_llm"  # Optional: GLiNER entities + LLM relationships
 
 
 class RelationshipProvider(str, Enum):
-    """Relationship extraction providers."""
+    # Relationship extraction providers.
     LOCAL = "local"           # Use local LLM (Docker Model Runner)
     OPENROUTER = "openrouter"  # Use OpenRouter API
 
 
 class GraphRAGSettings(BaseSettings):
-    """
-    Runtime configuration loaded from environment/.env file.
-    All magic numbers centralized here per coding framework.
-    """
-    # Default Embedding Configuration (Loaded from .env)
+    # Runtime configuration loaded from .env. Magic numbers centralized here.
     EMBEDDING_PROVIDER: EmbeddingProvider = EmbeddingProvider.DOCKER_MODEL_RUNNER
     EMBEDDING_MODEL: str = ""      # Must be set in .env
     EMBEDDING_URL: str = "http://host.docker.internal:12434"
@@ -102,6 +91,7 @@ class GraphRAGSettings(BaseSettings):
     TOP_K: int = 10
     FUSION_ALPHA: float = 0.5  # 0=pure BM25, 1=pure vector
     RRF_K: int = 60            # Reciprocal Rank Fusion constant
+    BM25_LANGUAGE: str = "en"  # Stopword language (en, zh, ja, ko, fr, de, es, etc.)
     
     # Query Output Optimization (Agent-First Interface)
     CHUNK_DEDUP_SIMILARITY_THRESHOLD: float = 0.85  # Cosine similarity threshold for deduplication
@@ -220,21 +210,7 @@ JSON:"""
     
     @classmethod
     def forDatabase(cls, dbName: str = None) -> "GraphRAGSettings":
-        """
-        Create settings instance with database-specific paths.
-        
-        Loads provider settings (LLM, embeddings) from .env but overrides
-        paths (DUCKDB_PATH, INPUT_DIR, OUTPUT_DIR) from the workspace registry.
-        
-        Args:
-            dbName: Database name. If None or not found, uses 'default'.
-        
-        Returns:
-            GraphRAGSettings instance configured for the specified database.
-        
-        Raises:
-            ValueError: If database doesn't exist and can't be created.
-        """
+        # Create settings instance with database-specific paths from workspace registry.
         from workspace_config import getRegistry
         
         registry = getRegistry()
@@ -245,8 +221,8 @@ JSON:"""
         
         # Override paths with database-specific values
         instance.DUCKDB_PATH = dbConfig.dbPath
-        instance.INPUT_DIR = dbConfig.inputDir
-        instance.OUTPUT_DIR = dbConfig.outputDir
+        instance.INPUT_DIR = dbConfig.sourceFolder
+        instance.OUTPUT_DIR = dbConfig.outputFolder
         
         return instance
 
@@ -256,15 +232,7 @@ settings = GraphRAGSettings()
 
 
 def getSettingsForDatabase(dbName: str = None) -> GraphRAGSettings:
-    """
-    Convenience function to get settings for a specific database.
-    
-    Args:
-        dbName: Database name, or None for default.
-    
-    Returns:
-        GraphRAGSettings configured for the database.
-    """
+    # Get settings for a specific database or default singleton.
     if dbName is None:
         return settings  # Return global singleton for default
     return GraphRAGSettings.forDatabase(dbName)

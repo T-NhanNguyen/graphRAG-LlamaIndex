@@ -1,6 +1,4 @@
-"""
-Embedding Provider - GPU-accelerated embeddings via Docker Model Runner.
-"""
+# Embedding Provider - GPU-accelerated embeddings via Docker Model Runner.
 import asyncio
 import logging
 from typing import List, Optional
@@ -14,24 +12,11 @@ logger = logging.getLogger(__name__)
 
 
 class DockerModelRunnerEmbeddings:
-    """
-    GPU-accelerated embeddings via Docker Model Runner.
-    
-    Uses OpenAI-compatible /embeddings endpoint with parallel batching
-    for efficient corpus processing.
-    """
+    # GPU-accelerated embeddings using OpenAI-compatible /embeddings endpoint with parallel batching.
     
     def __init__(self, baseUrl: Optional[str] = None, model: Optional[str] = None, 
                  concurrency: int = None, batchSize: int = None):
-        """
-        Initialize embedding provider.
-        
-        Args:
-            baseUrl: Docker Model Runner endpoint
-            model: Embedding model name
-            concurrency: Number of parallel requests
-            batchSize: Texts per batch
-        """
+        # Initialize embedding provider with optional configuration overrides.
         self.baseUrl = baseUrl or settings.EMBEDDING_URL
         self.model = model or settings.EMBEDDING_MODEL
         self.concurrency = concurrency or settings.EMBEDDING_CONCURRENCY
@@ -105,15 +90,7 @@ class DockerModelRunnerEmbeddings:
         return flattened
     
     def embedDocuments(self, texts: List[str]) -> List[List[float]]:
-        """
-        Embed multiple texts with parallel batching.
-        
-        Args:
-            texts: List of texts to embed
-            
-        Returns:
-            List of embedding vectors
-        """
+        # Embed multiple texts with parallel batching. Returns list of vectors.
         if not texts:
             return []
         
@@ -129,15 +106,7 @@ class DockerModelRunnerEmbeddings:
         return loop.run_until_complete(self._embedAllAsync(texts))
     
     def embedQuery(self, text: str) -> List[float]:
-        """
-        Embed a single query text.
-        
-        Args:
-            text: Query text
-            
-        Returns:
-            Embedding vector
-        """
+        # Embed a single query text.
         results = self.embedDocuments([text])
         return results[0] if results else [0.0] * settings.EMBEDDING_DIMENSION
     

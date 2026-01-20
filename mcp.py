@@ -1,13 +1,5 @@
-"""
-GraphRAG MCP Router - Model Context Protocol command interface.
-
-Routes agent commands to GraphRAG query and indexing functions.
-Follows coding framework guidelines for tool development:
-- Self-documenting code with clear intent
-- Centralized constants and configuration
-- High-signal structured outputs for agent consumption
-- No silent error swallows
-"""
+# GraphRAG MCP Router - Model Context Protocol command interface.
+# Routes agent commands to search, graph traversal, and stats functions.
 
 import sys
 import warnings
@@ -48,7 +40,7 @@ _queryEngine: Optional[GraphRAGQueryEngine] = None
 
 
 def _getQueryEngine() -> GraphRAGQueryEngine:
-    """Lazy singleton for query engine to avoid repeated initialization."""
+    # Lazy singleton for query engine to avoid repeated initialization.
     global _queryEngine
     if _queryEngine is None:
         _queryEngine = GraphRAGQueryEngine()
@@ -56,13 +48,7 @@ def _getQueryEngine() -> GraphRAGQueryEngine:
 
 
 def _preprocessData(data: Any) -> Any:
-    """
-    Recursively process data for JSON serialization and TSON compression.
-    
-    - Converts dataclasses to dicts
-    - Drops None values to save tokens
-    - Applies TSON compression to uniform lists of dicts
-    """
+    # Process data for JSON/TSON serialization: converts dataclasses, drops Nones, applies TSON.
     if data is None:
         return None
     
@@ -93,14 +79,7 @@ def _preprocessData(data: Any) -> Any:
 
 
 def _truncateResults(result: Any, topK: int) -> Any:
-    """
-    Apply safety limits to prevent token bloat while preserving reasoning quality.
-    
-    Limits:
-    - Entities: exactly topK
-    - Direct Relationships: min(topK * 3, 30)
-    - Extended Relationships: max(topK // 2, 2)
-    """
+    # Apply safety limits (topK) to prevent token bloat while preserving reasoning quality.
     if not hasattr(result, '__dataclass_fields__') and not isinstance(result, dict):
         return result
         
@@ -182,7 +161,7 @@ def _truncateResults(result: Any, topK: int) -> Any:
 
 
 def _formatMcpResponse(data: Any, error: str = None, topK: int = DEFAULT_TOP_K) -> str:
-    """Standardized high-signal JSON response for AI agents."""
+    # Standardized high-signal JSON response for AI agents.
     dumpArgs = {"default": str}
     if TOGGLE_MINIFIED_OUTPUT:
         dumpArgs["separators"] = (',', ':')
@@ -200,7 +179,7 @@ def _formatMcpResponse(data: Any, error: str = None, topK: int = DEFAULT_TOP_K) 
 
 
 def _getParams(args: tuple, fieldMap: Dict[str, int]) -> Dict[str, Any]:
-    """Extract parameters from either a single dict or positional args."""
+    # Extract parameters from either a single dict or positional args.
     if len(args) == 1 and isinstance(args[0], dict):
         return args[0]
     
@@ -212,17 +191,7 @@ def _getParams(args: tuple, fieldMap: Dict[str, int]) -> Dict[str, Any]:
 
 
 def routeCommand(commandString: str) -> str:
-    """
-    Parse and route the agent command string to GraphRAG functions.
-    
-    Supported commands:
-    - search(query, searchType, topK) - Unified search interface
-    - localSearch(query, topK) - Entity-centric search with graph context
-    - globalSearch(query, topK) - Community-based thematic search
-    - fusionSearch(query, topK, alpha) - Pure hybrid BM25+vector retrieval
-    - getEntityNeighborhood(entityName, hops) - Graph traversal from entity
-    - getStats() - Database statistics for corpus introspection
-    """
+    # Parse and route agent command string (search, explore_entity_graph, get_corpus_stats).
     
     # Match pattern: functionName(args)
     match = re.match(r"(\w+)\((.*)\)", commandString, re.DOTALL)

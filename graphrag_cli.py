@@ -42,34 +42,15 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 class GraphRAGService:
-    """
-    Core service layer for GraphRAG operations.
-    
-    Designed for reuse across CLI, API, and MCP interfaces.
-    Returns structured data (dicts), never prints directly.
-    Raises exceptions on errors (never sys.exit()).
-    """
+    # Core service layer for GraphRAG operations. Returns structured data (dicts).
     
     def start(
         self,
         dbName: str,
-        inputDir: Optional[str] = None,
-        outputDir: Optional[str] = None
+        sourceFolder: Optional[str] = None,
+        outputFolder: Optional[str] = None
     ) -> Dict[str, Any]:
-        """
-        Initialize a new database.
-        
-        Args:
-            dbName: Database name (required, cannot be empty)
-            inputDir: Optional input directory for documents
-            outputDir: Optional output directory
-        
-        Returns:
-            Dict with database configuration details.
-        
-        Raises:
-            ValueError: If dbName is empty or invalid
-        """
+        # Initialize a new database and return its configuration details.
         # Early validation per coding framework
         if not dbName or not dbName.strip():
             raise ValueError("Database name cannot be empty")
@@ -77,8 +58,8 @@ class GraphRAGService:
         registry = getRegistry()
         config = registry.register(
             name=dbName,
-            inputDir=inputDir,
-            outputDir=outputDir
+            sourceFolder=sourceFolder,
+            outputFolder=outputFolder
         )
         
         return {
@@ -86,8 +67,8 @@ class GraphRAGService:
             "action": "created",
             "database": config.name,
             "dbPath": config.dbPath,
-            "inputDir": config.inputDir,
-            "outputDir": config.outputDir
+            "sourceFolder": config.sourceFolder,
+            "outputFolder": config.outputFolder
         }
     
     def index(
@@ -95,12 +76,7 @@ class GraphRAGService:
         dbName: Optional[str] = None,
         prune: bool = False
     ) -> Dict[str, Any]:
-        """
-        Index documents into the database.
-        
-        Returns:
-            Dict with indexing statistics.
-        """
+        # Index documents into the database and return statistics.
         from graphrag_config import getSettingsForDatabase
         from duckdb_store import getStore
         from indexer import GraphRAGIndexer
@@ -140,18 +116,7 @@ class GraphRAGService:
         searchType: str = "connections",
         topK: int = 10
     ) -> Dict[str, Any]:
-        """
-        Execute a search query.
-        
-        Args:
-            dbName: Database name
-            query: Search query string
-            searchType: One of 'connections', 'thematic', 'keyword'
-            topK: Number of results
-        
-        Returns:
-            Dict with search results.
-        """
+        # Execute a search query and return results.
         from graphrag_config import getSettingsForDatabase
         from duckdb_store import getStore
         from query_engine import GraphRAGQueryEngine
@@ -181,7 +146,7 @@ class GraphRAGService:
         }
     
     def listDatabases(self) -> Dict[str, Any]:
-        """List all registered databases."""
+        # List all registered databases.
         registry = getRegistry()
         databases = registry.list()
         
@@ -192,7 +157,7 @@ class GraphRAGService:
                 {
                     "name": db.name,
                     "dbPath": db.dbPath,
-                    "inputDir": db.inputDir,
+                    "sourceFolder": db.sourceFolder,
                     "createdAt": db.createdAt,
                     "lastIndexed": db.lastIndexed
                 }
@@ -201,7 +166,7 @@ class GraphRAGService:
         }
     
     def status(self, dbName: Optional[str] = None) -> Dict[str, Any]:
-        """Get database statistics."""
+        # Get database statistics.
         from graphrag_config import getSettingsForDatabase
         from duckdb_store import getStore
         
@@ -216,13 +181,13 @@ class GraphRAGService:
             "success": True,
             "database": config.name,
             "dbPath": config.dbPath,
-            "inputDir": config.inputDir,
+            "sourceFolder": config.sourceFolder,
             "lastIndexed": config.lastIndexed,
             "stats": stats
         }
     
     def delete(self, dbName: str, deleteFiles: bool = False) -> Dict[str, Any]:
-        """Remove a database from registry."""
+        # Remove a database from registry.
         # Early validation
         if not dbName or not dbName.strip():
             raise ValueError("Database name cannot be empty")
@@ -249,7 +214,7 @@ class GraphRAGService:
         dbPath: str,
         inputDir: Optional[str] = None
     ) -> Dict[str, Any]:
-        """Register an existing .duckdb file."""
+        # Register an existing .duckdb file.
         registry = getRegistry()
         config = registry.registerExisting(dbName, dbPath, inputDir)
         
@@ -266,17 +231,15 @@ class GraphRAGService:
 # =============================================================================
 
 def _formatSuccess(message: str) -> None:
-    """Print success message with green checkmark."""
     print(message)
 
 
 def _formatError(message: str) -> None:
-    """Print error message with red X."""
     print(f"Error: {message}", file=sys.stderr)
 
 
 def _formatTable(headers: list, rows: list) -> None:
-    """Print a simple ASCII table."""
+    # Print a simple ASCII table.
     if not rows:
         print("(no data)")
         return
@@ -298,16 +261,16 @@ def _formatTable(headers: list, rows: list) -> None:
 
 
 def _cmdStart(args, service: GraphRAGService) -> int:
-    """Handle 'start' command."""
+    # Handle 'start' command.
     try:
         result = service.start(
             dbName=args.database,
-            inputDir=args.input
+            sourceFolder=args.source
         )
         _formatSuccess(f"Database '{result['database']}' initialized")
-        print(f"   Database: {result['dbPath']}")
-        print(f"   Input:    {result['inputDir']}")
-        print(f"   Output:   {result['outputDir']}")
+        print(f"   Database:      {result['dbPath']}")
+        print(f"   Source Folder: {result['sourceFolder']}")
+        print(f"   Output Folder: {result['outputFolder']}")
         return 0
     except Exception as e:
         _formatError(str(e))
@@ -315,7 +278,7 @@ def _cmdStart(args, service: GraphRAGService) -> int:
 
 
 def _cmdIndex(args, service: GraphRAGService) -> int:
-    """Handle 'index' command."""
+    # Handle 'index' command.
     try:
         dbName = getattr(args, 'database', None)
         print(f"Indexing documents for '{dbName or DEFAULT_DATABASE_NAME}'...")
@@ -342,7 +305,7 @@ def _cmdIndex(args, service: GraphRAGService) -> int:
 
 
 def _cmdSearch(args, service: GraphRAGService) -> int:
-    """Handle 'search' command."""
+    # Handle 'search' command.
     try:
         result = service.search(
             dbName=getattr(args, 'database', None),
@@ -387,7 +350,7 @@ def _cmdSearch(args, service: GraphRAGService) -> int:
 
 
 def _cmdList(args, service: GraphRAGService) -> int:
-    """Handle 'list' command."""
+    # Handle 'list' command.
     try:
         result = service.listDatabases()
         
@@ -395,9 +358,9 @@ def _cmdList(args, service: GraphRAGService) -> int:
         
         if result['databases']:
             _formatTable(
-                ["Name", "Last Indexed", "Input Directory"],
+                ["Name", "Last Indexed", "Source Folder"],
                 [
-                    [db['name'], db['lastIndexed'] or "Never", db['inputDir']]
+                    [db['name'], db['lastIndexed'] or "Never", db['sourceFolder']]
                     for db in result['databases']
                 ]
             )
@@ -411,15 +374,15 @@ def _cmdList(args, service: GraphRAGService) -> int:
 
 
 def _cmdStatus(args, service: GraphRAGService) -> int:
-    """Handle 'status' command."""
+    # Handle 'status' command.
     try:
         result = service.status(dbName=getattr(args, 'database', None))
         
         print(f"\nDatabase status: {result['database']}")
         print("-" * 40)
-        print(f"   Path:        {result['dbPath']}")
-        print(f"   Input Dir:   {result['inputDir']}")
-        print(f"   Last Indexed: {result['lastIndexed'] or 'Never'}")
+        print(f"   Path:          {result['dbPath']}")
+        print(f"   Source Folder: {result['sourceFolder']}")
+        print(f"   Last Indexed:  {result['lastIndexed'] or 'Never'}")
         
         stats = result.get('stats', {})
         if stats:
@@ -435,7 +398,7 @@ def _cmdStatus(args, service: GraphRAGService) -> int:
 
 
 def _cmdDelete(args, service: GraphRAGService) -> int:
-    """Handle 'delete' command."""
+    # Handle 'delete' command.
     try:
         if not args.force:
             confirm = input(f"Warning: Delete database '{args.database}'? (y/N): ")
@@ -456,12 +419,12 @@ def _cmdDelete(args, service: GraphRAGService) -> int:
 
 
 def _cmdRegister(args, service: GraphRAGService) -> int:
-    """Handle 'register' command."""
+    # Handle 'register' command.
     try:
         result = service.register(
             dbName=args.database,
             dbPath=args.db_path,
-            inputDir=getattr(args, 'input', None)
+            sourceFolder=getattr(args, 'source', None)
         )
         
         _formatSuccess(f"Registered existing database as '{result['database']}'")
@@ -476,7 +439,7 @@ def _cmdRegister(args, service: GraphRAGService) -> int:
 
 
 def main():
-    """Main CLI entry point."""
+    # Main CLI entry point.
     parser = argparse.ArgumentParser(
         prog='graphrag',
         description='GraphRAG - Knowledge Graph Management CLI',
@@ -488,7 +451,7 @@ def main():
     # --- start ---
     p_start = subparsers.add_parser('start', help='Initialize a new database')
     p_start.add_argument('database', help='Database name')
-    p_start.add_argument('--input', '-i', help='Input directory for documents')
+    p_start.add_argument('--source', '-s', help='Source folder containing documents')
     p_start.set_defaults(func=_cmdStart)
     
     # --- index ---

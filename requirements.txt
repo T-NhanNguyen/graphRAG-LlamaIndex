@@ -10,3 +10,4 @@ gliner>=0.2.0
 torch>=2.0.0
 transformers>=4.0.0
 openai>=1.0.0
+stop-words>=2018.7.23

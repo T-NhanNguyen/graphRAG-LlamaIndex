@@ -11,10 +11,8 @@ dist/
 .env.*
 !.env.example
 
-# Database & Storage
-.DuckDB/
-*.duckdb
-data/
+# User documents folder (mounted via DOCUMENTS_HOME in .env)
+documents/
 output/
 
 # Node

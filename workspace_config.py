@@ -1,7 +1,4 @@
-"""
-Workspace Configuration - Global database registry for GraphRAG.
-Manages ~/.graphrag/registry.json which stores database configurations.
-"""
+# Workspace Configuration - Global database registry managing ~/.graphrag/registry.json.
 import json
 import logging
 from pathlib import Path
@@ -16,70 +13,63 @@ import os
 DEFAULT_DATABASE_NAME = os.environ.get("GRAPHRAG_DATABASE", "default").strip().lower()
 REGISTRY_DIR = Path.home() / ".graphrag"
 REGISTRY_FILE = REGISTRY_DIR / "registry.json"
-DATABASES_DIR = REGISTRY_DIR / "databases"
+INDEX_VAULT_DIR = REGISTRY_DIR / "index-vault"  # Renamed from "databases"
 REGISTRY_VERSION = 1  # For future schema migrations
 
 
 @dataclass
 class DatabaseConfig:
-    """Configuration for a single GraphRAG database."""
+    # Configuration for a single GraphRAG database.
     name: str                           # User-friendly name (e.g., "financial-analysis")
     dbPath: str                         # Absolute path to .duckdb file
-    inputDir: str                       # Source documents directory
-    outputDir: str                      # Output directory for logs, exports
+    sourceFolder: str                   # Source documents directory
+    outputFolder: str                   # Output directory for logs, exports
     createdAt: str = field(default_factory=lambda: datetime.now().isoformat())
     lastIndexed: Optional[str] = None   # ISO timestamp of last indexing run
     
     def toDict(self) -> Dict:
-        """Convert to serializable dict."""
+        # Convert to serializable dict.
         return asdict(self)
     
     @classmethod
     def fromDict(cls, data: Dict) -> "DatabaseConfig":
-        """Create from dict, handling missing optional fields."""
+        # Create from dict, handling missing optional fields.
         return cls(
             name=data["name"],
             dbPath=data["dbPath"],
-            inputDir=data["inputDir"],
-            outputDir=data["outputDir"],
+            sourceFolder=data.get("sourceFolder", data.get("inputDir", "")),
+            outputFolder=data.get("outputFolder", data.get("outputDir", "")),
             createdAt=data.get("createdAt", datetime.now().isoformat()),
             lastIndexed=data.get("lastIndexed")
         )
 
 
 class WorkspaceRegistry:
-    """
-    Manages global database registry at ~/.graphrag/registry.json.
-    
-    Design for scalability:
-    - Singleton pattern with lazy loading
-    - Thread-safe file operations
-    - Structured returns for future API use
-    """
+    # Manages global database registry at ~/.graphrag/registry.json as a singleton.
     
     _instance: Optional["WorkspaceRegistry"] = None
     
     def __init__(self):
-        """Initialize registry, creating directories if needed."""
+        # Initialize registry, creating directories if needed.
         self._ensureDirectories()
         self._registry: Dict[str, DatabaseConfig] = {}
         self._load()
     
     @classmethod
     def getInstance(cls) -> "WorkspaceRegistry":
-        """Get singleton instance."""
+        # Get singleton instance.
         if cls._instance is None:
             cls._instance = cls()
         return cls._instance
     
     def _ensureDirectories(self) -> None:
-        """Create registry directories if they don't exist."""
+        # Create registry directories if they don't exist.
         REGISTRY_DIR.mkdir(parents=True, exist_ok=True)
-        DATABASES_DIR.mkdir(parents=True, exist_ok=True)
+        INDEX_VAULT_DIR.mkdir(parents=True, exist_ok=True)
         logger.debug(f"Registry directory ensured: {REGISTRY_DIR}")
     
     def _load(self) -> None:
-        """Load registry from disk."""
+        # Load registry from disk.
         if REGISTRY_FILE.exists():
             try:
                 with open(REGISTRY_FILE, 'r', encoding='utf-8') as f:
@@ -97,7 +87,7 @@ class WorkspaceRegistry:
             self._save()  # Create empty registry file
     
     def _save(self) -> None:
-        """Persist registry to disk."""
+        # Persist registry to disk.
         data = {
             "version": 1,
             "databases": {name: config.toDict() for name, config in self._registry.items()}
@@ -109,47 +99,32 @@ class WorkspaceRegistry:
     def register(
         self,
         name: str,
-        inputDir: Optional[str] = None,
-        outputDir: Optional[str] = None,
+        sourceFolder: Optional[str] = None,
+        outputFolder: Optional[str] = None,
         dbPath: Optional[str] = None
     ) -> DatabaseConfig:
-        """
-        Register a new database or update existing one.
-        
-        Args:
-            name: Database name (e.g., "financial-analysis")
-            inputDir: Directory containing source documents
-            outputDir: Directory for outputs (defaults to ~/.graphrag/databases/{name}/output)
-            dbPath: Path to .duckdb file (defaults to ~/.graphrag/databases/{name}/{name}.duckdb)
-        
-        Returns:
-            DatabaseConfig for the registered database
-        
-        Raises:
-            ValueError: If name is empty
-        """
+        # Register a new database or update existing one with default path resolution.
         if not name or not name.strip():
             raise ValueError("Database name cannot be empty")
         
         name = name.strip().lower().replace(" ", "-")
         
         # Set defaults for paths
-        dbDir = DATABASES_DIR / name
+        dbDir = INDEX_VAULT_DIR / name
         dbDir.mkdir(parents=True, exist_ok=True)
         
         resolvedDbPath = dbPath or str(dbDir / f"{name}.duckdb")
-        resolvedInputDir = inputDir or str(dbDir / "input")
-        resolvedOutputDir = outputDir or str(dbDir / "output")
+        resolvedSourceFolder = sourceFolder
+        resolvedOutputFolder = outputFolder or str(dbDir / "output")
         
-        # Create input/output directories
-        Path(resolvedInputDir).mkdir(parents=True, exist_ok=True)
-        Path(resolvedOutputDir).mkdir(parents=True, exist_ok=True)
+        if resolvedOutputFolder:
+            Path(resolvedOutputFolder).mkdir(parents=True, exist_ok=True)
         
         config = DatabaseConfig(
             name=name,
             dbPath=resolvedDbPath,
-            inputDir=resolvedInputDir,
-            outputDir=resolvedOutputDir
+            sourceFolder=resolvedSourceFolder or "",
+            outputFolder=resolvedOutputFolder
         )
         
         isUpdate = name in self._registry
@@ -162,28 +137,12 @@ class WorkspaceRegistry:
         return config
     
     def get(self, name: Optional[str] = None) -> Optional[DatabaseConfig]:
-        """
-        Get database configuration by name.
-        
-        Args:
-            name: Database name (uses DEFAULT_DATABASE if None)
-        
-        Returns:
-            DatabaseConfig if found, None otherwise
-        """
+        # Get database configuration by name, falling back to default.
         targetName = (name or DEFAULT_DATABASE_NAME).strip().lower()
         return self._registry.get(targetName)
     
     def getOrDefault(self, name: Optional[str] = None) -> DatabaseConfig:
-        """
-        Get database configuration, creating default if needed.
-        
-        Args:
-            name: Database name (uses DEFAULT_DATABASE if None or not found)
-        
-        Returns:
-            DatabaseConfig (never None - creates default if missing)
-        """
+        # Get database configuration, creating default if not found.
         config = self.get(name)
         if config is None:
             # Create default database if requested name doesn't exist
@@ -194,20 +153,11 @@ class WorkspaceRegistry:
         return config
     
     def list(self) -> List[DatabaseConfig]:
-        """List all registered databases."""
+        # List all registered databases.
         return list(self._registry.values())
     
     def delete(self, name: str, deleteFiles: bool = False) -> bool:
-        """
-        Remove database from registry.
-        
-        Args:
-            name: Database name to remove
-            deleteFiles: If True, also delete database files (DANGEROUS)
-        
-        Returns:
-            True if deleted, False if not found
-        """
+        # Remove database from registry and optionally delete files (NOT REVERTABLE).
         name = name.strip().lower()
         if name not in self._registry:
             return False
@@ -216,7 +166,7 @@ class WorkspaceRegistry:
         
         if deleteFiles:
             import shutil
-            dbDir = DATABASES_DIR / name
+            dbDir = INDEX_VAULT_DIR / name
             if dbDir.exists():
                 shutil.rmtree(dbDir)
                 logger.info(f"Deleted database files: {dbDir}")
@@ -227,36 +177,23 @@ class WorkspaceRegistry:
         return True
     
     def updateLastIndexed(self, name: str) -> None:
-        """Update the lastIndexed timestamp for a database."""
+        # Update the lastIndexed timestamp for a database.
         if name in self._registry:
             self._registry[name].lastIndexed = datetime.now().isoformat()
             self._save()
     
-    def registerExisting(self, name: str, dbPath: str, inputDir: Optional[str] = None) -> DatabaseConfig:
-        """
-        Register an existing .duckdb file under a new name.
-        
-        Args:
-            name: Name for the database
-            dbPath: Path to existing .duckdb file
-            inputDir: Optional input directory (for future indexing)
-        
-        Returns:
-            DatabaseConfig for the registered database
-        
-        Raises:
-            FileNotFoundError: If dbPath doesn't exist
-        """
+    def registerExisting(self, name: str, dbPath: str, sourceFolder: Optional[str] = None) -> DatabaseConfig:
+        # Register an existing .duckdb file under a new name.
         if not Path(dbPath).exists():
             raise FileNotFoundError(f"Database file not found: {dbPath}")
         
         return self.register(
             name=name,
             dbPath=str(Path(dbPath).resolve()),
-            inputDir=inputDir
+            sourceFolder=sourceFolder
         )
 
 
 def getRegistry() -> WorkspaceRegistry:
-    """Get the global workspace registry singleton."""
+    # Get the global workspace registry singleton.
     return WorkspaceRegistry.getInstance()

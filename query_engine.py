@@ -1,16 +1,4 @@
-"""
-GraphRAG Query Engine - Search interface with local and global modes.
-
-Provides:
-- Local search: Fusion retrieval + entity graph traversal
-- Global search: (Scaffold for community-based reasoning)
-- Direct fusion: Pure BM25+vector hybrid
-
-Following coding framework guidelines:
-- Typed returns for LLM tool compatibility
-- Structured output (dicts, JSON)
-- Clear docstrings
-"""
+# GraphRAG Query Engine - Search interface supporting connection-based and thematic reasoning.
 import logging
 from typing import List, Dict, Optional, Any
 from dataclasses import dataclass, asdict
@@ -25,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class QueryResult:
-    """Structured query response for agent consumption."""
+    # Structured query response for agent consumption.
     query: str
     searchType: str
     chunks: List[Dict]
@@ -37,16 +25,10 @@ class QueryResult:
 
 
 class GraphRAGQueryEngine:
-    """
-    Query engine supporting multiple search strategies.
-    
-    - local: Entity-centric search with graph context
-    - global: Community-based reasoning (scaffold)
-    - fusion: Pure hybrid retrieval
-    """
+    # Query engine supporting connection-based (graph context), thematic (community), and keyword search.
     
     def __init__(self, store: Optional[DuckDBStore] = None):
-        """Initialize query engine with storage and retrieval components."""
+        # Initialize query engine with storage and retrieval components.
         self.store = store or getStore()
         
         # Initialize embedding function for retrieval
@@ -56,7 +38,7 @@ class GraphRAGQueryEngine:
         logger.info("Query engine initialized")
     
     def _entityToDict(self, entity: Entity) -> Dict:
-        """Convert Entity to serializable dict."""
+        # Convert Entity to serializable dict.
         return {
             "id": entity.entityId,
             "name": entity.name,
@@ -66,13 +48,7 @@ class GraphRAGQueryEngine:
         }
     
     def _relationshipToDict(self, rel: Relationship, entityNameMap: Dict[str, tuple[str, str]] = None) -> Dict:
-        """
-        Convert Relationship to serializable dict with optional entity name enrichment.
-        
-        Args:
-            rel: Relationship object
-            entityNameMap: Optional dict mapping entity_id -> (name, type)
-        """
+        # Convert Relationship to serializable dict with optional entity name enrichment.
         result = {
             "id": rel.relationshipId,
             "source": rel.sourceEntityId,
@@ -96,7 +72,7 @@ class GraphRAGQueryEngine:
         return result
     
     def _resultToDict(self, result: RetrievalResult) -> Dict:
-        """Convert RetrievalResult to serializable dict."""
+        # Convert RetrievalResult to serializable dict.
         return {
             "chunkId": result.chunkId,
             "text": result.text,
@@ -109,18 +85,7 @@ class GraphRAGQueryEngine:
         }
     
     def _deduplicateChunks(self, chunks: List[Dict]) -> tuple[List[Dict], int]:
-        """
-        Remove semantically similar chunks to maximize information density.
-        
-        Uses cosine similarity on chunk embeddings. Preserves higher-ranked chunks
-        when duplicates are found.
-        
-        Args:
-            chunks: List of chunk dicts with 'embedding' field
-            
-        Returns:
-            Tuple of (deduplicated chunks, number removed)
-        """
+        # Remove semantically similar chunks based on cosine similarity to maximize info density.
         if not settings.CHUNK_DEDUP_ENABLED or len(chunks) <= 1:
             return chunks, 0
         
@@ -152,7 +117,7 @@ class GraphRAGQueryEngine:
         return uniqueChunks, duplicatesRemoved
     
     def _cosineSimilarity(self, vec1: List[float], vec2: List[float]) -> float:
-        """Calculate cosine similarity between two vectors."""
+        # Calculate cosine similarity between two vectors.
         import numpy as np
         v1 = np.array(vec1)
         v2 = np.array(vec2)
@@ -160,24 +125,7 @@ class GraphRAGQueryEngine:
     
     
     def localSearch(self, query: str, topK: Optional[int] = None) -> QueryResult:
-        """
-        Local search with entity graph context - Agent-optimized output.
-        
-        1. Performs fusion retrieval to find relevant chunks
-        2. Deduplicates semantically similar chunks
-        3. Identifies entities mentioned in those chunks
-        4. Retrieves related entities via relationships
-        5. Enriches relationships with entity names
-        6. Groups relationships into "direct" vs "extended"
-        7. Returns structured evidence for agent reasoning
-        
-        Args:
-            query: Natural language query
-            topK: Number of chunks to retrieve
-            
-        Returns:
-            QueryResult with optimized agent structure
-        """
+        # Local search with entity graph context. Returns QueryResult with evidence for agent reasoning.
         topK = topK or settings.TOP_K
         
         # Get fusion results with entity context
@@ -240,17 +188,7 @@ class GraphRAGQueryEngine:
     def _groupRelationshipsByChunk(self, relationships: List[Dict], 
                                     chunks: List[Dict], 
                                     entities: List) -> tuple[List[Dict], List[Dict]]:
-        """
-        Separate relationships into direct (from top chunks) vs extended (graph context).
-        
-        Args:
-            relationships: All relationships
-            chunks: Top chunks (already ordered by relevance)
-            entities: All entities with sourceChunkIds
-            
-        Returns:
-            Tuple of (direct relationships, extended relationships)
-        """
+        # Separate relationships into direct (from top chunks) vs extended (graph context).
         windowSize = settings.RELATIONSHIP_DIRECT_CHUNK_WINDOW
         topChunkIds = {chunk["chunkId"] for chunk in chunks[:windowSize]}
         
@@ -273,11 +211,7 @@ class GraphRAGQueryEngine:
         return directRels, extendedRels
     
     def globalSearch(self, query: str, topK: Optional[int] = None) -> QueryResult:
-        """
-        Global search for thematic/high-level queries using Community Summaries.
-        
-        Refined for Stage 2: Will prioritize matches from the community_summaries table.
-        """
+        # Global search for thematic queries using community summaries.
         logger.info("Performing global search via community summaries")
         # Stage 1.5 fallback: If no communities, use fusion
         # Future: self.store.searchCommunities(query)
@@ -287,19 +221,7 @@ class GraphRAGQueryEngine:
     
     def fusionSearch(self, query: str, topK: Optional[int] = None,
                      alpha: Optional[float] = None) -> QueryResult:
-        """
-        Pure fusion retrieval without entity context.
-        
-        Useful for direct document retrieval when graph context is not needed.
-        
-        Args:
-            query: Search query
-            topK: Number of results
-            alpha: Override fusion alpha (0=BM25, 1=vector)
-            
-        Returns:
-            QueryResult with chunks only
-        """
+        # Pure fusion retrieval without entity context.
         topK = topK or settings.TOP_K
         
         if alpha is not None:
@@ -323,17 +245,7 @@ class GraphRAGQueryEngine:
     
     def search(self, query: str, searchType: str = "find_connections", 
                topK: Optional[int] = None) -> QueryResult:
-        """
-        Unified search interface.
-        
-        Args:
-            query: Natural language query
-            searchType: "find_connections", "explore_thematic", or "keyword_search"
-            topK: Number of results
-            
-        Returns:
-            QueryResult
-        """
+        # Unified search interface.
         searchType = searchType.lower()
         
         if searchType == "find_connections":
@@ -347,16 +259,7 @@ class GraphRAGQueryEngine:
             return self.localSearch(query, topK)
     
     def getEntityNeighborhood(self, entityName: str, hops: int = 1) -> Dict:
-        """
-        Get entity and its neighborhood from the graph.
-        
-        Args:
-            entityName: Name of entity to lookup
-            hops: Number of relationship hops to traverse
-            
-        Returns:
-            Dict with center entity and connected entities/relationships
-        """
+        # Get entity and its neighborhood from the graph up to specified hops.
         entity = self.store.getEntityByName(entityName)
         
         if not entity:
@@ -402,7 +305,7 @@ class GraphRAGQueryEngine:
 
 
 def main():
-    """CLI entry point for queries."""
+    # CLI entry point for queries.
     import argparse
     import json
     
