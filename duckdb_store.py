@@ -1,18 +1,3 @@
-"""
-DuckDB Storage Layer - Unified storage for GraphRAG knowledge graph.
-
-Implements persistent storage for:
-- Documents and text chunks
-- Entity nodes and relationship edges
-- Dense vector embeddings
-- Sparse BM25 statistics
-
-Following coding framework guidelines:
-- Clear docstrings for LLM tool compatibility
-- Typed parameters and returns
-- Contextual error handling with logging
-- No silent failures
-"""
 import os
 import json
 import uuid
@@ -33,14 +18,13 @@ class PipelineStatus:
     EXTRACTED = 'extracted'
     COMPLETE = 'complete'
 
-# Configure logging per coding framework (debuggability/observability)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
 @dataclass
 class SourceDocument:
-    """Represents an ingested source file."""
+    # Represents an ingested source file
     id: str
     sourcePath: str
     rawContent: str
@@ -50,10 +34,8 @@ class SourceDocument:
 
 @dataclass
 class DocumentChunk:
-    """
-    Unified text chunk with embedding.
-    Corresponds to the 'Documents' table in the proposed schema.
-    """
+    # Unified text chunk with embedding.
+    # Corresponds to the 'Documents' table in the proposed schema
     chunkId: str
     sourceDocumentId: str
     text: str
@@ -64,7 +46,7 @@ class DocumentChunk:
 
 @dataclass
 class Entity:
-    """Represents a knowledge graph entity node."""
+    # Represents a knowledge graph entity node
     entityId: str
     name: str
     canonicalName: str
@@ -76,7 +58,7 @@ class Entity:
 
 @dataclass
 class Relationship:
-    """Represents a relationship edge between two entities."""
+    # Represents a relationship edge between two entities
     relationshipId: str
     sourceEntityId: str
     targetEntityId: str
@@ -87,7 +69,7 @@ class Relationship:
 
 @dataclass
 class CommunitySummary:
-    """Represents a thematic summary of a Leiden community."""
+    # Represents a thematic summary of a Leiden community
     communityId: str
     level: int
     entityIds: List[str]
@@ -108,7 +90,6 @@ class DuckDBStore:
     SCHEMA_VERSION = 1
 
     # Type Priority for Deduplication (Lower number = Higher Priority)
-    # Context: Narrative/Hype-driven. Prioritizing Concepts over specific instances.
     TYPE_PRIORITY = {
         EntityType.CONCEPT: 1,
         EntityType.TECHNOLOGY: 2,
@@ -120,7 +101,7 @@ class DuckDBStore:
     }
     
     def __init__(self, dbPath: Optional[str] = None):
-        """Initialize DuckDB connection and ensure schema exists."""
+        # Initialize DuckDB connection and ensure schema exists
         self.dbPath = dbPath or settings.DUCKDB_PATH
         
         # Ensure directory exists
@@ -134,7 +115,7 @@ class DuckDBStore:
         logger.info(f"DuckDB initialized at: {self.dbPath}")
     
     def _initializeSchema(self) -> None:
-        """Create all tables with the redesigned GraphRAG schema."""
+        # Create all tables with the redesigned GraphRAG schema
         
         # 1. Source Documents (Metadata about the original files)
         # pipeline_status tracks indexing progress: pending -> chunked -> embedded -> extracted -> complete
@@ -149,7 +130,6 @@ class DuckDBStore:
         """)
         
         # 2. Documents/Chunks (Unified Text + Embedding)
-        # Reflects the 'Documents' table from the proposal
         self.connection.execute(f"""
             CREATE TABLE IF NOT EXISTS documents (
                 chunk_id VARCHAR PRIMARY KEY,
@@ -223,7 +203,7 @@ class DuckDBStore:
             )
         """)
         
-        # --- Indexing ---
+        # - Indexing -
         
         # Entity Name index for fast lookup
         self.connection.execute("CREATE INDEX IF NOT EXISTS idx_entities_name ON entities(name)")
@@ -253,10 +233,10 @@ class DuckDBStore:
         
         logger.info("Database schema initialized")
     
-    # ========== Source Document Operations ==========
+    # - Source Document Operations -
     
     def insertSourceDocument(self, doc: SourceDocument) -> str:
-        """Insert a source document and return its ID."""
+        # Insert a source document and return its ID
         docId = doc.id or str(uuid.uuid4())
         try:
             self.connection.execute("""
@@ -273,7 +253,7 @@ class DuckDBStore:
             raise
     
     def getSourceDocument(self, docId: str) -> Optional[SourceDocument]:
-        """Retrieve a source document by ID."""
+        # Retrieve a source document by ID
         result = self.connection.execute(
             "SELECT id, source_path, raw_content, pipeline_status, created_at FROM source_documents WHERE id = ?",
             [docId]
@@ -290,7 +270,7 @@ class DuckDBStore:
         return None
     
     def getSourceDocumentByPath(self, sourcePath: str) -> Optional[SourceDocument]:
-        """Check if a source document with this source path already exists."""
+        # Check if a source document with this source path already exists
         result = self.connection.execute(
             "SELECT id, source_path, raw_content, pipeline_status, created_at FROM source_documents WHERE source_path = ?",
             [sourcePath]
@@ -326,7 +306,6 @@ class DuckDBStore:
         filename = path.name
         parentFolder = path.parent.name if path.parent else ""
         
-        # Match: filename AND parent folder name
         # This prevents false matches when same filename exists in different folders
         result = self.connection.execute("""
             SELECT id, source_path, raw_content, pipeline_status, created_at 
@@ -348,7 +327,7 @@ class DuckDBStore:
         return None
     
     def updateSourceDocumentPath(self, docId: str, newPath: str) -> None:
-        """Update the source path for a document (used after mount path migration)."""
+        # used after mount path migration
         self.connection.execute(
             "UPDATE source_documents SET source_path = ? WHERE id = ?",
             [newPath, docId]
@@ -356,7 +335,6 @@ class DuckDBStore:
         logger.info(f"Updated document path to: {newPath}")
     
     def updatePipelineStatus(self, docId: str, status: str) -> None:
-        """Update the pipeline status for a source document."""
         self.connection.execute(
             "UPDATE source_documents SET pipeline_status = ? WHERE id = ?",
             [status, docId]
@@ -364,12 +342,8 @@ class DuckDBStore:
         logger.debug(f"Updated pipeline status for {docId}: {status}")
     
     def getIncompleteDocuments(self) -> List[tuple]:
-        """
-        Find source documents that have not completed all pipeline stages.
-        
-        Returns:
-            List of (id, source_path, pipeline_status) tuples
-        """
+        # Find source documents that have not completed all pipeline stages.
+        # List of (id, source_path, pipeline_status) tuples
         results = self.connection.execute("""
             SELECT id, source_path, pipeline_status
             FROM source_documents
@@ -382,28 +356,18 @@ class DuckDBStore:
         return results
     
     def getDocumentsByStatus(self, status: str) -> List[tuple]:
-        """Get all documents at a specific pipeline stage."""
+        # Get all documents at a specific pipeline stage
         return self.connection.execute(
             "SELECT id, source_path FROM source_documents WHERE pipeline_status = ?",
             [status]
         ).fetchall()
     
     def clearAllTables(self, dropTables: bool = False) -> Dict[str, int]:
-        """
-        Clear all data from all tables. Returns count of deleted rows per table.
-        If dropTables is True, drops the tables instead of deleting rows.
-        """
+        # Clear all data from all tables. Returns count of deleted rows per table.
+        # If dropTables is True, drops the tables instead of deleting rows.
         deletedCounts = {}
         
         # Dependency order for dropping (children before parents)
-        # 1. community_summaries (no FKs out)
-        # 2. relationships (depends on entities)
-        # 3. sparse_vectors (depends on documents)
-        # 4. bm25_stats (no FKs out)
-        # 5. documents (depends on source_documents)
-        # 6. entities (no FKs out)
-        # 7. source_documents (no FKs out)
-        # 8. corpus_metadata (no FKs out)
         tables = [
             'community_summaries',
             'relationships',
@@ -444,11 +408,8 @@ class DuckDBStore:
         return deletedCounts
     
     def resetDatabase(self) -> Dict[str, int]:
-        """
-        Nuclear reset: Close connection, delete file, reconnect.
-        This guarantees a clean slate with current config dimensions.
-        """
-        # Get counts before nuking
+        # Nuclear reset: Close connection, delete file, reconnect.
+        # This guarantees a clean slate with current config dimensions
         deletedCounts = {}
         tables = ['community_summaries', 'relationships', 'sparse_vectors', 
                   'bm25_stats', 'documents', 'entities', 'source_documents', 'corpus_metadata']
@@ -474,10 +435,10 @@ class DuckDBStore:
         
         return deletedCounts
     
-    # ========== Unified Chunk/Document Operations ==========
+    # - Unified Chunk/Document Operations -
     
     def insertDocumentChunks(self, chunks: List[DocumentChunk]) -> int:
-        """Batch insert chunks with embeddings. Returns count inserted."""
+        # Batch insert chunks with embeddings. Returns count inserted
         if not chunks:
             return 0
         
@@ -504,7 +465,7 @@ class DuckDBStore:
             raise
             
     def updateEmbeddings(self, chunkIds: List[str], embeddings: List[List[float]]) -> int:
-        """Update only the embeddings for a set of chunks."""
+        # Update only the embeddings for a set of chunks
         if not chunkIds or not embeddings:
             return 0
         data = [(emb, cid) for cid, emb in zip(chunkIds, embeddings)]
@@ -520,7 +481,7 @@ class DuckDBStore:
             raise
     
     def getChunksForSourceDocument(self, sourceDocumentId: str) -> List[DocumentChunk]:
-        """Get all chunks for a source document, ordered by index."""
+        # Get all chunks for a source document, ordered by index
         results = self.connection.execute("""
             SELECT chunk_id, source_document_id, text, chunk_index, embedding, metadata
             FROM documents
@@ -541,7 +502,7 @@ class DuckDBStore:
         ]
     
     def getAllChunks(self) -> List[DocumentChunk]:
-        """Get all chunks in the corpus."""
+        # Get all chunks in the corpus
         results = self.connection.execute("""
             SELECT chunk_id, source_document_id, text, chunk_index, embedding, metadata
             FROM documents
@@ -560,7 +521,7 @@ class DuckDBStore:
             for r in results
         ]
     
-    # ========== Entity Operations ==========
+    # - Entity Operations -
     
     def insertEntities(self, entities: List[Entity]) -> int:
         """
@@ -587,8 +548,6 @@ class DuckDBStore:
                     return 99
             return self.TYPE_PRIORITY.get(entityType, 99)
 
-        # 1. Pre-consolidate the input batch in Python by name
-        # This ensures we don't have naming collisions within the same batch
         consolidated = {}
         for e in entities:
             name = e.name
@@ -612,8 +571,6 @@ class DuckDBStore:
                 if p < existing['priority']:
                     existing['entityType'] = type_val
                     existing['priority'] = p
-                    # We keep the original ID of the first one or high priority? 
-                    # Existing ID is fine as long as name matches.
                 
                 # Merge descriptions if not redundant
                 if e.description and e.description not in existing['description']:
@@ -626,8 +583,6 @@ class DuckDBStore:
                 existing['sourceDocumentIds'] = list(set(existing['sourceDocumentIds'] + e.sourceDocumentIds))
                 existing['sourceChunkIds'] = list(set(existing['sourceChunkIds'] + e.sourceChunkIds))
 
-        # 2. Prepare batch for native UPSERT
-        # We use the type string to calculate priority in SQL too for merging with existing DB data
         formattedBatch = [
             (c['entityId'], c['name'], c['canonicalName'], c['entityType'], 
              c['description'], c['source_document_ids'] if 'source_document_ids' in c else c['sourceDocumentIds'], 
@@ -687,7 +642,6 @@ class DuckDBStore:
 
     
     def getEntityByName(self, name: str) -> Optional[Entity]:
-        """Find entity by name (case-insensitive)."""
         result = self.connection.execute("""
             SELECT entity_id, name, canonical_name, entity_type, description, source_document_ids, source_chunk_ids
             FROM entities
@@ -707,7 +661,7 @@ class DuckDBStore:
         return None
     
     def getAllEntities(self) -> List[Entity]:
-        """Get all entities in the knowledge graph."""
+        # Get all entities in the knowledge graph
         results = self.connection.execute("""
             SELECT entity_id, name, canonical_name, entity_type, description, source_document_ids, source_chunk_ids
             FROM entities
@@ -793,10 +747,10 @@ class DuckDBStore:
             logger.error(f"Failed to bulk fetch entity names: {exc}")
             return {}
     
-    # ========== Relationship Operations ==========
+    # - Relationship Operations -
     
     def insertRelationships(self, relationships: List[Relationship]) -> int:
-        """Batch insert relationships."""
+        # Batch insert relationships
         if not relationships:
             return 0
         
@@ -823,7 +777,7 @@ class DuckDBStore:
             raise
 
     def insertCommunitySummaries(self, summaries: List[CommunitySummary]) -> int:
-        """Batch insert community summaries."""
+        # Batch insert community summaries
         if not summaries:
             return 0
             
@@ -849,7 +803,6 @@ class DuckDBStore:
             raise
     
     def getRelationshipsForEntity(self, entityId: str) -> List[Relationship]:
-        """Get all relationships where entity is source or target."""
         results = self.connection.execute("""
             SELECT relationship_id, source_entity_id, target_entity_id, 
                    relationship_type, description, weight
@@ -869,7 +822,7 @@ class DuckDBStore:
             for r in results
         ]
     
-    # ========== Vector Operations ==========
+    # - Vector Operations -
     
     def vectorSimilaritySearch(self, queryEmbedding: List[float], topK: int = 10) -> List[Tuple[str, float, str]]:
         """
@@ -934,11 +887,11 @@ class DuckDBStore:
                 similarities.sort(key=lambda x: x[1], reverse=True)
                 return similarities[:topK]
     
-    # ========== BM25/Sparse Vector Operations ==========
+    # - BM25/Sparse Vector Operations -
     
     def insertSparseVectors(self, chunkIds: List[str], tokenizedTerms: List[List[str]], 
                             termFrequencies: List[Dict[str, int]], docLengths: List[int]) -> int:
-        """Batch insert sparse vector data for BM25."""
+        # Batch insert sparse vector data for BM25
         if not chunkIds:
             return 0
         
@@ -963,7 +916,7 @@ class DuckDBStore:
             raise
     
     def updateBm25Stats(self, termDocFrequencies: Dict[str, int]) -> None:
-        """Update corpus-level term document frequencies for IDF."""
+        # Update corpus-level term document frequencies for IDF
         for term, df in termDocFrequencies.items():
             self.connection.execute("""
                 INSERT INTO bm25_stats (term, doc_frequency)
@@ -974,18 +927,15 @@ class DuckDBStore:
         logger.info(f"Updated BM25 stats for {len(termDocFrequencies)} terms")
     
     def getBm25Stats(self) -> Tuple[int, float, Dict[str, int]]:
-        """Get corpus statistics: (total_docs, avg_doc_length, term_doc_frequencies)."""
-        # Total documents
+        # Get corpus statistics: (total_docs, avg_doc_length, term_doc_frequencies)
         totalDocs = self.connection.execute(
             "SELECT COUNT(*) FROM sparse_vectors"
         ).fetchone()[0]
         
-        # Average document length
         avgLength = self.connection.execute(
             "SELECT AVG(doc_length) FROM sparse_vectors"
         ).fetchone()[0] or 0.0
         
-        # Term document frequencies
         termDfs = {}
         results = self.connection.execute(
             "SELECT term, doc_frequency FROM bm25_stats"
@@ -995,10 +945,10 @@ class DuckDBStore:
         
         return totalDocs, float(avgLength), termDfs
     
-    # ========== Community Summary Operations ==========
+    # - Community Summary Operations -
     
     def insertCommunitySummaries(self, summaries: List[CommunitySummary]) -> int:
-        """Batch insert community summaries."""
+        # Batch insert community summaries
         if not summaries:
             return 0
             
@@ -1023,12 +973,10 @@ class DuckDBStore:
             logger.error(f"Failed to insert community summaries: {exc}")
             raise
             
-    # ========== Corpus Metadata ==========
-    
-    # ========== Statistics ==========
-    
+    # - Corpus Metadata -
+        
     def getStats(self) -> Dict[str, int]:
-        """Get corpus statistics for debugging/observability."""
+        # Get corpus statistics for debugging/observability
         stats = {}
         
         tables = ['source_documents', 'documents', 'entities', 'relationships', 
@@ -1046,16 +994,12 @@ class DuckDBStore:
         return stats
     
     def deleteGarbageChunks(self, chunkIds: List[str]) -> int:
-        """
-        Prune garbage chunks from all tables.
-        Returns the number of chunks successfully removed.
-        """
+        # Prune garbage chunks from all tables.
+        # Returns the number of chunks successfully removed
         if not chunkIds:
             return 0
             
         try:
-            # Ordered deletion due to FKs
-            # Note: sparse_vectors and documents have FKs.
             self.connection.executemany("DELETE FROM sparse_vectors WHERE chunk_id = ?", [[cid] for cid in chunkIds])
             self.connection.executemany("DELETE FROM documents WHERE chunk_id = ?", [[cid] for cid in chunkIds])
             
@@ -1067,7 +1011,7 @@ class DuckDBStore:
             raise
 
     def getEmbeddingCentroid(self) -> Optional[List[float]]:
-        """Calculate the average embedding (centroid) for all documents."""
+        # Calculate the average embedding (centroid) for all documents
         try:
             # Fetch all embeddings
             res = self.connection.execute("SELECT embedding FROM documents WHERE embedding IS NOT NULL").fetchall()
@@ -1113,7 +1057,6 @@ class DuckDBStore:
             return []
             
         try:
-            # Use list_cosine_similarity (higher is more similar)
             # Find those with similarity < threshold
             res = self.connection.execute(f"""
                 SELECT chunk_id
@@ -1201,23 +1144,18 @@ class DuckDBStore:
         try:
             stats = {}
             
-            # Document count
             result = self.connection.execute("SELECT COUNT(*) FROM source_documents").fetchone()
             stats['documentCount'] = result[0] if result else 0
             
-            # Chunk count
             result = self.connection.execute("SELECT COUNT(*) FROM documents").fetchone()
             stats['chunkCount'] = result[0] if result else 0
             
-            # Entity count
             result = self.connection.execute("SELECT COUNT(*) FROM entities").fetchone()
             stats['entityCount'] = result[0] if result else 0
             
-            # Relationship count
             result = self.connection.execute("SELECT COUNT(*) FROM relationships").fetchone()
             stats['relationshipCount'] = result[0] if result else 0
             
-            # Community count
             result = self.connection.execute("SELECT COUNT(*) FROM community_summaries").fetchone()
             stats['communityCount'] = result[0] if result else 0
             
@@ -1227,7 +1165,7 @@ class DuckDBStore:
             return {}
 
     def close(self) -> None:
-        """Close the database connection."""
+        # Close the database connection
         if self.connection:
             self.connection.close()
             logger.info("Database connection closed")
@@ -1259,7 +1197,6 @@ def getStore(dbPath: Optional[str] = None, refresh: bool = False) -> DuckDBStore
     """
     path = dbPath or settings.DUCKDB_PATH
     
-    # Normalize path for consistent cache keys
     path = os.path.abspath(path)
     
     if refresh and path in _storeInstances:
@@ -1274,7 +1211,7 @@ def getStore(dbPath: Optional[str] = None, refresh: bool = False) -> DuckDBStore
 
 
 def closeAllStores() -> None:
-    """Close all cached store instances. Useful for cleanup."""
+    # Close all cached store instances. Useful for cleanup
     global _storeInstances
     for path, store in _storeInstances.items():
         try:

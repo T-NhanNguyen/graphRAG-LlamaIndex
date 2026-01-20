@@ -10,9 +10,7 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 class LeidenPipeline:
-    """
-    Orchestrates hierarchical community detection and summarization.
-    """
+    # Orchestrates hierarchical community detection and summarization
     
     def __init__(self, store: DuckDBStore):
         self.store = store
@@ -20,7 +18,7 @@ class LeidenPipeline:
         self.llm = getLLMClient()
 
     def _loadGraph(self):
-        """Build a NetworkX graph from DuckDB entities and relationships."""
+        # Build a NetworkX graph from DuckDB entities and relationships
         logger.info("Extracting graph from DuckDB")
         
         # 1. Fetch Entities
@@ -39,10 +37,8 @@ class LeidenPipeline:
         logger.info(f"Graph loaded: {self.graph.number_of_nodes()} nodes, {self.graph.number_of_edges()} edges")
 
     def detectCommunities(self) -> Dict[int, Dict[str, List[str]]]:
-        """
-        Run hierarchical Leiden clustering.
-        Returns a mapping of {level: {community_id: [entity_ids]}}
-        """
+        # Run hierarchical Leiden clustering.
+        # Returns a mapping of {level: {community_id: [entity_ids]}}
         if self.graph.number_of_nodes() == 0:
             self._loadGraph()
             
@@ -77,9 +73,7 @@ class LeidenPipeline:
             return {}
 
     def summarizeCommunities(self, hierarchicalMap: Dict[int, Dict[str, List[str]]]):
-        """
-        Generate summaries for each detected community and persist to DuckDB.
-        """
+        # Generate summaries for each detected community and persist to DuckDB
         all_summaries = []
         
         for level, communities in hierarchicalMap.items():

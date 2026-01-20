@@ -1,12 +1,5 @@
 """
 Embedding Provider - GPU-accelerated embeddings via Docker Model Runner.
-
-Adapted from rag-tool2 pattern with async batching for efficient corpus indexing.
-
-Following coding framework guidelines:
-- Batch APIs over single calls
-- Contextual logging with progress
-- Typed returns
 """
 import asyncio
 import logging
@@ -51,7 +44,7 @@ class DockerModelRunnerEmbeddings:
         logger.info(f"Embedding provider: {self.baseUrl} using {self.model}")
     
     async def _embedBatch(self, client: httpx.AsyncClient, batch: List[str]) -> List[List[float]]:
-        """Execute single batch embedding request with retry logic."""
+        # Execute single batch embedding request with retry logic
         endpoint = f"{self.baseUrl}/v1/embeddings"
         
         payload = {
@@ -82,7 +75,7 @@ class DockerModelRunnerEmbeddings:
                     raise RuntimeError(f"Embedding failed after {maxRetries} retries: {exc}")
     
     async def _embedAllAsync(self, texts: List[str]) -> List[List[float]]:
-        """Orchestrate parallel embedding of all texts."""
+        # Orchestrate parallel embedding of all texts
         if not texts:
             return []
         
@@ -149,7 +142,7 @@ class DockerModelRunnerEmbeddings:
         return results[0] if results else [0.0] * settings.EMBEDDING_DIMENSION
     
     def isAvailable(self) -> bool:
-        """Check if embedding endpoint is reachable."""
+        # Check if embedding endpoint is reachable
         try:
             with httpx.Client(timeout=5.0) as client:
                 response = client.get(f"{self.baseUrl}/v1/models")
@@ -159,5 +152,5 @@ class DockerModelRunnerEmbeddings:
 
 
 def getEmbeddings() -> DockerModelRunnerEmbeddings:
-    """Factory function for embedding provider."""
+    # Factory function for embedding provider
     return DockerModelRunnerEmbeddings()

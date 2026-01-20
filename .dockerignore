@@ -1,0 +1,15 @@
+# Ignore database and data folders
+.DuckDB/
+output/
+input/
+
+# Ignore development/node artifacts
+node_modules/
+__pycache__/
+*.log
+.git/
+.vscode/
+
+# Ignore local config
+.env
+.env.local

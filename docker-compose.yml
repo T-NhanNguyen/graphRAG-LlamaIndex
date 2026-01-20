@@ -1,11 +1,4 @@
 services:
-  # Main service - CLI for indexing, querying, and database management
-  # Run with: docker compose run --rm graphrag python graphrag_cli.py <command>
-  # Examples:
-  #   docker compose run --rm graphrag python graphrag_cli.py start my-corpus --input /app/input
-  #   docker compose run --rm graphrag python graphrag_cli.py index my-corpus
-  #   docker compose run --rm graphrag python graphrag_cli.py search my-corpus "query"
-  #   docker compose run --rm graphrag python graphrag_cli.py list
   graphrag:
     build: .
     image: graphrag-llamaindex
@@ -27,7 +20,6 @@ services:
     # Default: show CLI help
     command: ["python", "graphrag_cli.py", "--help"]
 
-  # MCP Server - Persistent server for AI agent integration
   # Run with: docker compose up mcp
   mcp:
     image: graphrag-llamaindex

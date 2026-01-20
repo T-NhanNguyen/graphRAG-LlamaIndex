@@ -101,9 +101,10 @@ docker compose run --rm graphrag python graphrag_cli.py register my-database \
 TIP: Search keywords first then use the output to search for thematic or connection with better yields... I may look into a feature for Recurssion-LLM (Local) to automate this...
 
 ```
-docker compose run --rm graphrag python graphrag_cli.py index <database>
-docker compose run --rm graphrag python graphrag_cli.py search <database> "query" --type keyword -k 5
-docker compose run --rm graphrag python graphrag_cli.py search <database> "query" --type thematic -k 5
+docker compose run --rm graphrag python graphrag_cli.py start my-database --input /app/input
+docker compose run --rm graphrag python graphrag_cli.py index my-database
+docker compose run --rm graphrag python graphrag_cli.py search my-database "query"
+docker compose run --rm graphrag python graphrag_cli.py list
 ```
 
 Guide for Window Users:

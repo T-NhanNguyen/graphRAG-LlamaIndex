@@ -6,11 +6,6 @@ Implements Okapi BM25 scoring with:
 - Term frequency calculation per chunk
 - Document frequency tracking for IDF
 - Integration with DuckDB storage
-
-Following coding framework guidelines:
-- Bulk operations over single-item processing
-- Centralized constants from config
-- Clear docstrings for LLM tool compatibility
 """
 import re
 import math

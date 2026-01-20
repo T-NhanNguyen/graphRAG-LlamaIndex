@@ -1,13 +1,5 @@
 """
 Fusion Retrieval Engine - Hybrid BM25 + Vector search with RRF scoring.
-
-Combines keyword-based BM25 retrieval with semantic vector similarity
-using Reciprocal Rank Fusion for robust document ranking.
-
-Following coding framework guidelines:
-- Parallel execution for efficiency
-- Configurable alpha blending
-- Typed returns for LLM tool compatibility
 """
 import logging
 from typing import List, Dict, Tuple, Optional
