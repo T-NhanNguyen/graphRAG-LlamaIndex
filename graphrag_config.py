@@ -109,27 +109,28 @@ class GraphRAGSettings(BaseSettings):
     SUMMARY:
     """
 
-    # --- Extraction Prompts (Balanced for 8192 context) ---
-    LLM_SYSTEM_PROMPT: str = "You are a precise entity extraction assistant. Always respond with valid JSON."
+    # --- Extraction Prompts (Optimized for batch processing with noise resilience) ---
+    LLM_SYSTEM_PROMPT: str = """You are a knowledge extraction specialist. Parse text despite formatting issues (extra whitespace, broken lines, OCR artifacts). Ignore noise: navigation menus, footers, social links, author bios, ads, publication metadata. Output ONLY valid JSON."""
     
-    ENTITY_EXTRACTION_PROMPT: str = """Extract the most important entities from the following text. 
-Return ONLY valid JSON in this format:
-{{"entities": [{{"name": "Entity name", "type": "TYPE", "description": "1-sentence description"}}]}}
+    ENTITY_EXTRACTION_PROMPT: str = """Extract key entities from the text. Infer meaning from context even with bad formatting.
+
+IGNORE: URLs, social handles, "Share/Follow/Subscribe", author bios, copyright notices, navigation, ads, image captions, "Read more", publication dates/sources.
 
 Types: PERSON, ORGANIZATION, CONCEPT, LOCATION, EVENT, PRODUCT, TECHNOLOGY
-Rules: Max {max_entities} entities. Concise descriptions. Names capitalized.
+Format: {{"entities": [{{"name": "Proper Name", "type": "TYPE", "description": "Core role or significance"}}]}}
+Rules: Max {max_entities}. Merge duplicates. Capitalize names. Infer full names from partials when obvious.
 
 Text: {text}
 
 JSON:"""
 
-    RELATIONSHIP_EXTRACTION_PROMPT: str = """Given these entities: {entity_names}
-Extract explicit relationships between them from the provided text.
+    RELATIONSHIP_EXTRACTION_PROMPT: str = """Entities: {entity_names}
+Extract relationships evidenced in text. Infer implicit connections when strongly suggested.
 
-Return ONLY valid JSON in this format:
-{{"relationships": [{{"source": "Name", "target": "Name", "type": "VERB", "description": "1-sentence max"}}]}}
+IGNORE: Links, ads, boilerplate, author/publisher info.
 
-Rules: Max {max_relationships} relationships. Types must be concise verbs (e.g., PLAYS_IN, LOCATED_AT).
+Format: {{"relationships": [{{"source": "Name", "target": "Name", "type": "VERB_PHRASE", "description": "Why connected"}}]}}
+Rules: Max {max_relationships}. Types: action verbs (LEADS, ACQUIRED_BY, LOCATED_IN, DEVELOPS). Match entity names exactly as given.
 
 Text: {text}
 
@@ -138,30 +139,33 @@ JSON:"""
     MAX_ENTITIES_PER_CHUNK: int = 10
     MAX_RELATIONSHIPS_PER_CHUNK: int = 15
     
-    BATCH_ENTITY_EXTRACTION_PROMPT: str = """Extract entities from {num_chunks} independent text chunks.
-Follow isolation: Do NOT cross-reference between chunks.
+    BATCH_ENTITY_EXTRACTION_PROMPT: str = """Extract entities from {num_chunks} chunks. Process each independently. Tolerate formatting issues.
+
+IGNORE per chunk: URLs, social links, nav menus, footers, "Share/Subscribe", author bios, ads, image refs, publication metadata, copyright.
 
 {chunk_blocks}
 
-Return ONLY valid JSON keyed by chunk index:
+Format (keyed by chunk index):
 {{
-  "0": {{"entities": [{{"name": "...", "type": "...", "description": "..."}}]}}
+  "0": {{"entities": [{{"name": "Proper Name", "type": "TYPE", "description": "Core significance"}}]}}
 }}
 
-Rules: Max {max_entities}/chunk. Types: PERSON, ORGANIZATION, CONCEPT, LOCATION, EVENT, PRODUCT, TECHNOLOGY.
+Types: PERSON, ORGANIZATION, CONCEPT, LOCATION, EVENT, PRODUCT, TECHNOLOGY
+Rules: Max {max_entities}/chunk. Merge duplicates within chunk. Infer full names. Capitalize properly.
 JSON:"""
 
-    BATCH_RELATIONSHIP_EXTRACTION_PROMPT: str = """Extract relationships from {num_chunks} text chunks using the provided entities.
-The chunks are from the same document. Identify relationships between ANY of the provided entities that are explicitly evidenced in the text.
+    BATCH_RELATIONSHIP_EXTRACTION_PROMPT: str = """Extract relationships from {num_chunks} chunks using provided entities. Chunks share document context—cross-reference allowed.
+
+IGNORE: Boilerplate, links, author info, ads, formatting artifacts.
 
 {chunk_blocks}
 
-Return ONLY valid JSON keyed by chunk index:
+Format (keyed by chunk index):
 {{
-  "0": {{"relationships": [{{"source": "Name", "target": "Name", "type": "VERB", "description": "..."}}]}}
+  "0": {{"relationships": [{{"source": "Name", "target": "Name", "type": "VERB_PHRASE", "description": "Evidence summary"}}]}}
 }}
 
-Rules: Max {max_relationships}/chunk. Types: concise verbs.
+Rules: Max {max_relationships}/chunk. Match entity names exactly. Types: action verbs. Infer implicit connections if strongly evidenced.
 JSON:"""
 
     # --- Garbage Filtering Parameters ---
@@ -189,18 +193,18 @@ JSON:"""
     TEST_DB_PATH: str = "./.DuckDB/test_graphrag.duckdb"
 
     
-    QUALITY_SCORING_PROMPT: str = """
-    Evaluate the following text chunk for information quality. 
-    Garbage text includes navigation menus, repeated footers, binary/random data, or extremely repetitive formatting.
-    High-quality text contains meaningful sentences, facts, or descriptions.
-    
-    Score 1.0 for high-quality content, 0.0 for pure garbage, and values in between for mixed content.
-    Return ONLY a single float number between 0.0 and 1.0.
-    
-    TEXT:
-    {text}
-    
-    SCORE:"""
+    QUALITY_SCORING_PROMPT: str = """Score text quality (0.0-1.0). Ignore formatting flaws (whitespace, line breaks).
+
+GARBAGE (0.0-0.3): Nav menus, "Share/Subscribe/Follow", social links, author bios, copyright, ads, image captions, cookie notices, random chars, repeated headers/footers, URL lists, "Read more at...", publication boilerplate.
+
+MIXED (0.4-0.6): Some useful content buried in noise.
+
+QUALITY (0.7-1.0): Substantive info—facts, analysis, descriptions, arguments, data. Minor formatting issues acceptable.
+
+TEXT:
+{text}
+
+Return ONLY a float:"""
 
     # Registry-managed paths (Overridden by forDatabase factory)
     INPUT_DIR: str = ""

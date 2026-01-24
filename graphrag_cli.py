@@ -212,11 +212,11 @@ class GraphRAGService:
         self,
         dbName: str,
         dbPath: str,
-        inputDir: Optional[str] = None
+        sourceFolder: Optional[str] = None
     ) -> Dict[str, Any]:
         # Register an existing .duckdb file.
         registry = getRegistry()
-        config = registry.registerExisting(dbName, dbPath, inputDir)
+        config = registry.registerExisting(dbName, dbPath, sourceFolder)
         
         return {
             "success": True,
@@ -489,7 +489,7 @@ def main():
     p_register = subparsers.add_parser('register', help='Register existing .duckdb file')
     p_register.add_argument('database', help='Name for the database')
     p_register.add_argument('--db-path', required=True, help='Path to .duckdb file')
-    p_register.add_argument('--input', '-i', help='Input directory')
+    p_register.add_argument('--source', '-s', help='Source folder')
     p_register.set_defaults(func=_cmdRegister)
     
     # Parse and execute

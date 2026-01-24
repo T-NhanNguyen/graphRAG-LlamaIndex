@@ -37,3 +37,4 @@ docs/archive/
 # OS
 .DS_Store
 Thumbs.db
+.DuckDB

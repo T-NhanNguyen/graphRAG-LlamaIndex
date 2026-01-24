@@ -1,6 +1,7 @@
 # GraphRAG MCP Router - Model Context Protocol command interface.
 # Routes agent commands to search, graph traversal, and stats functions.
 
+import os
 import sys
 import warnings
 # Suppress ALL warnings to prevent stdout contamination (breaks MCP protocol)
@@ -40,10 +41,17 @@ _queryEngine: Optional[GraphRAGQueryEngine] = None
 
 
 def _getQueryEngine() -> GraphRAGQueryEngine:
-    # Lazy singleton for query engine to avoid repeated initialization.
+    # Lazy singleton for query engine using active database from environment.
     global _queryEngine
     if _queryEngine is None:
-        _queryEngine = GraphRAGQueryEngine()
+        # Use database name from environment or default
+        dbName = os.environ.get("GRAPHRAG_DATABASE")
+        logger.info(f"Initializing query engine for database: {dbName or 'default'}")
+        
+        # Get database-specific settings (includes registry-resolved paths)
+        settings = getSettingsForDatabase(dbName)
+        store = getStore(settings.DUCKDB_PATH)
+        _queryEngine = GraphRAGQueryEngine(store)
     return _queryEngine
 
 
@@ -261,7 +269,10 @@ def routeCommand(commandString: str) -> str:
     # === GET CORPUS STATS ===
     # Database health and scale check
     elif functionName == "get_corpus_stats":
-        store = getStore()
+        # Use same database as query engine
+        dbName = os.environ.get("GRAPHRAG_DATABASE")
+        settings = getSettingsForDatabase(dbName)
+        store = getStore(settings.DUCKDB_PATH)
         stats = store.getCorpusStats()
         return _formatMcpResponse(stats)
     

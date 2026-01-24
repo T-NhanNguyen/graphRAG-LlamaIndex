@@ -142,13 +142,15 @@ If you need complete flexibility without predefined slots, look into creating a 
 ## Command Cheat-sheet
 
 ```
-graphrag start <db> [--input <path>]     # Create database
+graphrag start <db> [--source <path>]    # Create database/update a database's source folder
 graphrag index <db> [--prune]            # Index documents
 graphrag search <db> <query> [--type]    # Query knowledge graph
 graphrag list                            # List all databases
 graphrag status <db>                     # Show stats
 graphrag delete <db>                     # Remove database
-graphrag register <db> --db-path <path>  # Import existing .duckdb
+graphrag register <db> --db-path /root/.graphrag/<index-vault>/<path>  # Import existing .duckdb.
+# If the host folder is C:\Users\name\.graphrag
+# you're replacing that section with /root/.graphrag.
 ```
 
 ## Troubleshooting

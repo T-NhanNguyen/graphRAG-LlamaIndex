@@ -93,15 +93,39 @@ class GarbageFilter:
 class GarbageLogger:
     # Utility to log skipped garbage chunks for tracking and auditing.
     
-    def __init__(self, logPath: str = None):
-        self.logPath = logPath or os.path.join(settings.OUTPUT_DIR, "pruning_log.json")
-        self.evidenceDir = os.path.join(settings.OUTPUT_DIR, "pruning_evidence")
-        os.makedirs(os.path.dirname(self.logPath), exist_ok=True)
-        os.makedirs(self.evidenceDir, exist_ok=True)
+    def __init__(self, outputDir: Optional[str] = None):
+        self._outputDir = outputDir
+        self._initialized = False
         self.prunedLogs = []
+        self.logPath = None
+        self.evidenceDir = None
+
+    def _ensureInitialized(self):
+        if self._initialized:
+            return
+            
+        # Use provided outputDir or fall back to settings
+        outDir = self._outputDir or getattr(settings, "OUTPUT_DIR", "")
+        
+        # If still no output directory, we can't initialize yet
+        if not outDir:
+            return
+
+        self.logPath = os.path.join(outDir, "pruning_log.json")
+        self.evidenceDir = os.path.join(outDir, "pruning_evidence")
+        
+        logDir = os.path.dirname(self.logPath)
+        if logDir:
+            os.makedirs(logDir, exist_ok=True)
+        if self.evidenceDir:
+            os.makedirs(self.evidenceDir, exist_ok=True)
+            
+        self._initialized = True
 
     def log(self, chunkId: str, text: str, reason: str, metadata: Dict[str, Any] = None):
         # Log a garbage chunk and save individual evidence for inspection.
+        self._ensureInitialized()
+        
         logEntry = {
             "chunkId": chunkId,
             "reason": reason,
@@ -109,11 +133,16 @@ class GarbageLogger:
             "metadata": metadata or {}
         }
         self.prunedLogs.append(logEntry)
-        self._persistToDisk()
-        self._saveIndividualEvidence(chunkId, text, reason)
+        
+        if self._initialized:
+            self._persistToDisk()
+            self._saveIndividualEvidence(chunkId, text, reason)
 
     def _saveIndividualEvidence(self, chunkId: str, text: str, reason: str):
         # Save full pruned text to a Markdown file for auditing.
+        if not self._initialized or not self.evidenceDir:
+            return
+            
         try:
             # Create a clean filename from the reason
             safeReason = "".join(char for char in reason[:20] if char.isalnum() or char in " -_").strip()
@@ -129,6 +158,9 @@ class GarbageLogger:
 
     def _persistToDisk(self):
         # Persist logs to disk in JSON and JS (viewer) formats.
+        if not self._initialized or not self.logPath:
+            return
+            
         try:
             with open(self.logPath, 'w', encoding='utf-8') as jsonFile:
                 json.dump(self.prunedLogs, jsonFile, indent=2)
