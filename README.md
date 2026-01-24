@@ -169,3 +169,36 @@ graphrag register <db> --db-path /root/.graphrag/<index-vault>/<path>  # Import 
 ```bash
 export GRAPHRAG_REGISTRY_DIR=/mnt/c/Users/<your-windows-username>/.graphrag
 ```
+
+### MCP Config Path Format Error
+
+**Symptom**: The MCP server fails to initialize with an error like:
+
+```
+Error: docker: open /mnt/e/.../.env: The system cannot find the path specified.
+```
+
+**Cause**: Your `mcp_config.json` uses WSL-style paths (`/mnt/e/...`) but Docker Desktop for Windows requires Windows-style paths (`E:/...`). This happens when your AI agent runs from a different environment than where the MCP server executes.
+
+| Environment | Path Format      | Example                    |
+| ----------- | ---------------- | -------------------------- |
+| WSL/Linux   | `/mnt/e/project` | Used by Gemini CLI in WSL  |
+| Windows     | `E:/project`     | Required by Docker Desktop |
+
+**Solution**: Update your `mcp_config.json` volume mounts to use Windows paths:
+
+```json
+// Before (WSL paths - won't work)
+"-v", "/mnt/e/ai-workspace/projects/graphRAG-LlamaIndex:/app",
+"--env-file", "/mnt/e/ai-workspace/projects/graphRAG-LlamaIndex/.env",
+
+// After (Windows paths - works)
+"-v", "E:/ai-workspace/projects/graphRAG-LlamaIndex:/app",
+"--env-file", "E:/ai-workspace/projects/graphRAG-LlamaIndex/.env",
+```
+
+Also ensure the registry directory is mounted:
+
+```json
+"-v", "C:/Users/<username>/.graphrag:/root/.graphrag",
+```
