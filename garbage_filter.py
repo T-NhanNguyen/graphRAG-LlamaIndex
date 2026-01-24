@@ -104,10 +104,7 @@ class GarbageLogger:
         if self._initialized:
             return
             
-        # Use provided outputDir or fall back to settings
         outDir = self._outputDir or getattr(settings, "OUTPUT_DIR", "")
-        
-        # If still no output directory, we can't initialize yet
         if not outDir:
             return
 

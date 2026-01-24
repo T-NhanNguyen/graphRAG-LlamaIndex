@@ -44,11 +44,9 @@ def _getQueryEngine() -> GraphRAGQueryEngine:
     # Lazy singleton for query engine using active database from environment.
     global _queryEngine
     if _queryEngine is None:
-        # Use database name from environment or default
         dbName = os.environ.get("GRAPHRAG_DATABASE")
         logger.info(f"Initializing query engine for database: {dbName or 'default'}")
         
-        # Get database-specific settings (includes registry-resolved paths)
         settings = getSettingsForDatabase(dbName)
         store = getStore(settings.DUCKDB_PATH)
         _queryEngine = GraphRAGQueryEngine(store)
@@ -235,7 +233,6 @@ def routeCommand(commandString: str) -> str:
         "keyword_lookup": "keyword_search",
     }
     
-    # === SEARCH ===
     # The primary search tool - routes to local/global/fusion based on mode
     if functionName == "search":
         fieldMap = {"query": 0, "mode": 1, "topK": 2}
@@ -252,7 +249,6 @@ def routeCommand(commandString: str) -> str:
         result = engine.search(query, searchType=searchType, topK=topK)
         return _formatMcpResponse(result, topK=topK)
     
-    # === EXPLORE ENTITY GRAPH ===
     # Direct graph traversal from a known entity
     elif functionName == "explore_entity_graph":
         fieldMap = {"entityName": 0, "hops": 1}
@@ -266,10 +262,8 @@ def routeCommand(commandString: str) -> str:
         result = engine.getEntityNeighborhood(entityName, hops=hops)
         return _formatMcpResponse(result)
     
-    # === GET CORPUS STATS ===
     # Database health and scale check
     elif functionName == "get_corpus_stats":
-        # Use same database as query engine
         dbName = os.environ.get("GRAPHRAG_DATABASE")
         settings = getSettingsForDatabase(dbName)
         store = getStore(settings.DUCKDB_PATH)
