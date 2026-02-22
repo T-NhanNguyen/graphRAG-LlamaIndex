@@ -45,6 +45,8 @@ code $PROFILE
 # 4. Restart terminal
 ```
 
+Else run `. E:\ai-workspace\projects\graphRAG-LlamaIndex\.graphrag-alias.ps1`
+
 This enables you to use `graphrag <command>` instead of the full `docker compose run --rm graphrag python graphrag_cli.py <command>`. Because you need this repo around to use it, doing it like this is easier to manage.
 
 **Important Note for WSL Users:**

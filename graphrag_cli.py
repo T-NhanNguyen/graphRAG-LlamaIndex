@@ -74,7 +74,8 @@ class GraphRAGService:
     def index(
         self,
         dbName: Optional[str] = None,
-        prune: bool = False
+        prune: bool = False,
+        reset: bool = False
     ) -> Dict[str, Any]:
         # Index documents into the database and return statistics.
         from graphrag_config import getSettingsForDatabase
@@ -85,6 +86,11 @@ class GraphRAGService:
         store = getStore(settings.DUCKDB_PATH)
         
         indexer = GraphRAGIndexer(store=store)
+        
+        if reset:
+            logger.warning(f"Resetting database '{dbName or DEFAULT_DATABASE_NAME}' before re-indexing...")
+            indexer.resetDatabase()
+            
         stats = indexer.indexDirectory(settings.INPUT_DIR)
         
         # Update last indexed timestamp
@@ -260,6 +266,43 @@ def _formatTable(headers: list, rows: list) -> None:
         print(" | ".join(str(cell).ljust(widths[i]) for i, cell in enumerate(row)))
 
 
+def _testLLM() -> bool:
+    # Test LLM connection and display status. Returns True if successful.
+    from llm_client import getLLMClient
+    from graphrag_config import settings, RelationshipProvider
+    
+    client = getLLMClient()
+    providerName = "OpenRouter" if settings.RELATIONSHIP_PROVIDER == RelationshipProvider.OPENROUTER else "Local LLM"
+    
+    print(f"Testing LLM connection ({providerName})...", end="", flush=True)
+    success, model, error = client.testConnection()
+    
+    if success:
+        print(f" [OK] - Model: {model}")
+        return True
+    else:
+        print(f" [FAILED]")
+        _formatError(f"LLM test failed for {providerName}: {error}")
+        return False
+
+
+def _testEmbeddings() -> bool:
+    # Test Embedding connection and display status. Returns True if successful.
+    from embedding_provider import getEmbeddings
+    
+    client = getEmbeddings()
+    print(f"Testing Embedding connection (Local)...", end="", flush=True)
+    success, model, error = client.testConnection()
+    
+    if success:
+        print(f" [OK] - Model: {model}")
+        return True
+    else:
+        print(f" [FAILED]")
+        _formatError(f"Embedding test failed: {error}")
+        return False
+
+
 def _cmdStart(args, service: GraphRAGService) -> int:
     # Handle 'start' command.
     try:
@@ -281,11 +324,29 @@ def _cmdIndex(args, service: GraphRAGService) -> int:
     # Handle 'index' command.
     try:
         dbName = getattr(args, 'database', None)
-        print(f"Indexing documents for '{dbName or DEFAULT_DATABASE_NAME}'...")
+        
+        # Perform Model Provider health checks
+        print("\nPerforming Model Provider Health Checks...")
+        llm_ok = _testLLM()
+        embed_ok = _testEmbeddings()
+        
+        if not llm_ok or not embed_ok:
+            confirm = input("\nSome model provider tests failed. Service might be starting up. Proceed anyway? (y/N): ")
+            if confirm.lower() != 'y':
+                print("Aborted.")
+                return 1
+        else:
+            confirm = input(f"\nAll models reachable. Proceed with indexing documents for '{dbName or DEFAULT_DATABASE_NAME}'? (Y/n): ")
+            if confirm.lower() == 'n':
+                print("Aborted.")
+                return 0
+
+        print(f"\nIndexing documents for '{dbName or DEFAULT_DATABASE_NAME}'...")
         
         result = service.index(
             dbName=dbName,
-            prune=getattr(args, 'prune', False)
+            prune=getattr(args, 'prune', False),
+            reset=getattr(args, 'reset', False)
         )
         
         _formatSuccess(f"Indexing complete")
@@ -366,6 +427,11 @@ def _cmdList(args, service: GraphRAGService) -> int:
             )
         else:
             print("   No databases registered. Run 'graphrag start <name>' to create one.")
+        
+        # Add Model health checks to list output
+        print("\nModel Provider Status:")
+        _testLLM()
+        _testEmbeddings()
         
         return 0
     except Exception as e:
@@ -458,6 +524,7 @@ def main():
     p_index = subparsers.add_parser('index', help='Index documents into database')
     p_index.add_argument('database', nargs='?', help='Database name (default: "default")')
     p_index.add_argument('--prune', action='store_true', help='Prune low-quality content after indexing')
+    p_index.add_argument('--reset', action='store_true', help='Clear database and reindex all documents')
     p_index.set_defaults(func=_cmdIndex)
     
     # --- search ---

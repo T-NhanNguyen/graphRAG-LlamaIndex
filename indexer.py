@@ -612,6 +612,11 @@ class GraphRAGIndexer:
         
         # Stage 1: Identification and Chunking
         # indexDocument handles chunking for new files and status retrieval for existing ones
+        
+        # Security: Drop HNSW index during bulk ingest to prevent 'Duplicate keys' DuckDB VSS error.
+        # It will be recreated after Stage 2.
+        self.store.dropHnswIndex()
+        
         activeDocs = [] # List of (docId, current_status)
         for filePath in allFiles:
             docId, status = self.indexDocument(filePath, skipIfExists=skipIfExists)
@@ -638,6 +643,9 @@ class GraphRAGIndexer:
             # Update local status for subsequent stages
             activeDocs = [(d, PipelineStatus.EMBEDDED if d in docsToUpdateEmbedStatus else s) 
                          for d, s in activeDocs]
+            
+            # Recreate HNSW index after embeddings are populated for stability and performance
+            self.store.ensureHnswIndex()
         
         # Stage 3: BM25 Indexing
         # We re-index BM25 for any doc that was at least CHUNKED but not yet COMPLETE
@@ -667,6 +675,9 @@ class GraphRAGIndexer:
             for docId in docsToUpdateExtractStatus:
                 self.store.updatePipelineStatus(docId, PipelineStatus.EXTRACTED)
                 self.store.updatePipelineStatus(docId, PipelineStatus.COMPLETE)
+
+        # Ensure HNSW index exists even if Stage 2 was skipped
+        self.store.ensureHnswIndex()
 
         logger.info(f"Indexing complete: {self.stats}")
         return self.stats

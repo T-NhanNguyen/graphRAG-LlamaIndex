@@ -207,23 +207,14 @@ class DuckDBStore:
         self.connection.execute("CREATE INDEX IF NOT EXISTS idx_relationships_target ON relationships(target_entity_id)")
         
         # HNSW Indexing for Vector Search
-        # Attempt to load VSS extension and create HNSW index
+        # Attempt to load VSS extension
         try:
             self.connection.execute("INSTALL vss; LOAD vss;")
             # Enable experimental persistence for HNSW (required for most VSS versions)
             self.connection.execute("SET hnsw_enable_experimental_persistence = true;")
-            
-            # Create HNSW index on the unified documents table
-            # Note: Index creation might fail if table is empty or extension has version mismatch
-            # but we define the intent here.
-            self.connection.execute("""
-                CREATE INDEX IF NOT EXISTS idx_documents_vss 
-                ON documents USING HNSW (embedding)
-                WITH (metric = 'cosine')
-            """)
-            logger.info("VSS extension loaded and HNSW index ensured with experimental persistence")
+            logger.info("VSS extension loaded with experimental persistence enabled")
         except Exception as e:
-            logger.warning(f"Native VSS/HNSW indexing unavailable, falling back to brute-force SQL: {e}")
+            logger.warning(f"Native VSS extension unavailable: {e}")
         
         logger.info("Database schema initialized")
     
@@ -778,8 +769,44 @@ class DuckDBStore:
             for r in results
         ]
     
-    # - Vector Operations -
+    # - Vector Management & Maintenance -
     
+    def dropHnswIndex(self) -> bool:
+        # Drop the HNSW index to prevent 'Duplicate keys' error during large inserts.
+        try:
+            self.connection.execute("DROP INDEX IF EXISTS idx_documents_vss")
+            logger.info("Dropped HNSW index for maintenance")
+            return True
+        except Exception as e:
+            logger.warning(f"Failed to drop HNSW index: {e}")
+            return False
+
+    def ensureHnswIndex(self) -> bool:
+        # Recreate/ensure HNSW index exists on documents table.
+        # Best called after large embedding updates.
+        try:
+            # Check if index already exists
+            exists = self.connection.execute("""
+                SELECT COUNT(*) FROM duckdb_indexes 
+                WHERE index_name = 'idx_documents_vss'
+            """).fetchone()[0] > 0
+            
+            if exists:
+                return True
+                
+            # Create index
+            logger.info("Creating HNSW index (this may take a moment)...")
+            self.connection.execute("""
+                CREATE INDEX idx_documents_vss 
+                ON documents USING HNSW (embedding)
+                WITH (metric = 'cosine')
+            """)
+            logger.info("✓ HNSW index created successfully")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to create HNSW index: {e}")
+            return False
+
     def vectorSimilaritySearch(self, queryEmbedding: List[float], topK: int = 10) -> List[Tuple[str, float, str]]:
         # Perform vector similarity search using HNSW (VSS), SQL distance, or Python fallback.
         if not queryEmbedding:

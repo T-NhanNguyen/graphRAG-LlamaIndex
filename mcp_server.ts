@@ -8,6 +8,7 @@
  */
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
     ListToolsRequestSchema,
@@ -15,6 +16,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { exec } from "child_process";
 import { promisify } from "util";
+import express from "express";
 
 const execAsync = promisify(exec);
 
@@ -105,6 +107,40 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
 });
 
-const transport = new StdioServerTransport();
-await server.connect(transport);
-console.error("GraphRAG MCP Server started");
+const TRANSPORT = process.env.TRANSPORT || "stdio";
+
+if (TRANSPORT === "sse") {
+    const app = express();
+    let transport: SSEServerTransport | null = null;
+
+    // The MCP Gateway routes `/mcp` requests to the adapter.
+    app.get("/mcp", async (req, res) => {
+        transport = new SSEServerTransport("/message", res);
+        await server.connect(transport);
+        console.error("New SSE connection established");
+    });
+
+    app.post("/message", async (req, res) => {
+        if (transport) {
+            await transport.handlePostMessage(req, res);
+        } else {
+            res.status(400).send("No active session");
+        }
+    });
+
+    // Simple health check for Kubernetes readiness probe
+    app.get("/", (req, res) => {
+        res.status(200).send("GraphRAG MCP Server (SSE) is running");
+    });
+
+    const PORT = process.env.PORT || 8000;
+    app.listen(PORT, () => {
+        console.error(`GraphRAG MCP Server (SSE) started on port ${PORT}`);
+    });
+} else {
+    // Default to Stdio for backward compatibility
+    const transport = new StdioServerTransport();
+    await server.connect(transport);
+    console.error("GraphRAG MCP Server (Stdio) started");
+}
+

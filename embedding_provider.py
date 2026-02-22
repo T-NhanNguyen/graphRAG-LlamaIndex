@@ -119,6 +119,24 @@ class DockerModelRunnerEmbeddings:
         except Exception:
             return False
 
+    def testConnection(self) -> tuple[bool, str, Optional[str]]:
+        # Perform a live embedding test to wake up the service.
+        endpoint = f"{self.baseUrl}/v1/embeddings"
+        payload = {
+            "model": self.model,
+            "input": ["ping"]
+        }
+        
+        try:
+            with httpx.Client(timeout=10.0) as client:
+                response = client.post(endpoint, json=payload)
+                if response.status_code == 200:
+                    return True, self.model, None
+                else:
+                    return False, self.model, f"HTTP {response.status_code}: {response.text}"
+        except Exception as exc:
+            return False, self.model, str(exc)
+
 
 def getEmbeddings() -> DockerModelRunnerEmbeddings:
     # Factory function for embedding provider

@@ -508,15 +508,30 @@ class LocalLLMClient:
             with httpx.Client(timeout=10.0) as client:
                 # Docker Model Runner uses /v1/models endpoint
                 response = client.get(f"{self.baseUrl}/v1/models")
-                if response.status_code == 200:
-                    logger.info(f"LLM endpoint available: {self.baseUrl}")
-                    return True
-                else:
-                    logger.warning(f"LLM endpoint returned {response.status_code}")
-                    return False
-        except Exception as exc:
-            logger.warning(f"Warning: LLM endpoint not reachable at {self.baseUrl}: {exc}")
+                return response.status_code == 200
+        except Exception:
             return False
+
+    def testConnection(self) -> Tuple[bool, str, Optional[str]]:
+        # Perform a live query test to verify the LLM is responding and return the model name.
+        prompt = "ping"
+        # We use a very simple prompt to minimize cost/latency
+        payload = {
+            "model": self.model,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": 5
+        }
+        endpoint = f"{self.baseUrl}/v1/chat/completions"
+        
+        try:
+            with httpx.Client(timeout=10.0) as client:
+                response = client.post(endpoint, json=payload)
+                if response.status_code == 200:
+                    return True, self.model, None
+                else:
+                    return False, self.model, f"HTTP {response.status_code}: {response.text}"
+        except Exception as exc:
+            return False, self.model, str(exc)
 
     def summarizeCommunity(self, communityId: str, entities: List[Entity]) -> str:
         # Generate a thematic summary for a group of entities.
@@ -612,6 +627,20 @@ class OpenRouterClient(LocalLLMClient):
     def isAvailable(self) -> bool:
         # Check if OpenRouter API is reachable (basic key check).
         return bool(self.apiKey) and len(self.apiKey) > 10
+
+    def testConnection(self) -> Tuple[bool, str, Optional[str]]:
+        # Perform a live query test via OpenRouter.
+        try:
+            completion = self.client.chat.completions.create(
+                model=self.model,
+                messages=[{"role": "user", "content": "say pong"}],
+                max_tokens=5
+            )
+            if completion.choices:
+                return True, self.model, None
+            return False, self.model, "No response choices returned"
+        except Exception as exc:
+            return False, self.model, str(exc)
 
 
 def getLLMClient(baseUrl: Optional[str] = None, model: Optional[str] = None) -> LocalLLMClient:
