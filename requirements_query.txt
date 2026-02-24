@@ -1,0 +1,8 @@
+pydantic-settings>=2.0.0
+python-dotenv>=1.0.0
+duckdb>=1.0.0
+numpy>=1.24.0
+httpx>=0.25.0
+pandas>=2.0.0
+openai>=1.0.0
+stop-words>=2018.7.23

@@ -1,7 +1,9 @@
 services:
   graphrag:
-    build: .
-    image: graphrag-llamaindex
+    build: 
+      context: .
+      dockerfile: Dockerfile.indexer
+    image: graphrag-indexer
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
@@ -11,6 +13,8 @@ services:
       - ${DOCUMENTS_HOME:-./documents}:/app/documents
       # Project directory (for code access)
       - .:/app
+      # Cache for ML models (avoids re-downloading)
+      - hf_cache:/root/.cache/huggingface
     env_file:
       - .env
     environment:
@@ -20,9 +24,12 @@ services:
     # Default: show CLI help
     command: ["python", "graphrag_cli.py", "--help"]
 
-  # Run with: docker compose up mcp
-  mcp:
-    image: graphrag-llamaindex
+  # Run with: docker compose up query
+  query:
+    build: 
+      context: .
+      dockerfile: Dockerfile.query
+    image: graphrag-query
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
@@ -30,6 +37,7 @@ services:
       - ${DOCUMENTS_HOME:-./documents}:/app/documents
       - .:/app
       - /app/node_modules
+      - hf_cache:/root/.cache/huggingface
     env_file:
       - .env
     stdin_open: true
@@ -39,3 +47,7 @@ services:
       - NODE_NO_WARNINGS=1
       - GRAPHRAG_DATABASE=${GRAPHRAG_DATABASE:-default}
     command: ["npx", "tsx", "mcp_server.ts"]
+
+volumes:
+  hf_cache:
+

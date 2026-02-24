@@ -1,0 +1,40 @@
+# GraphRAG Query - Python 3.11 + Node.js for MCP Server
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install system dependencies including Node.js for MCP TypeScript server and curl for R2 download
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy query requirements
+COPY requirements_query.txt ./requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy package.json and install MCP dependencies
+COPY package.json .
+RUN npm install
+
+# Pre-install DuckDB extensions for vector search support
+RUN python -c "import duckdb; conn = duckdb.connect(':memory:'); conn.execute('INSTALL vss;')"
+
+# Copy all source files
+COPY *.py ./
+COPY *.ts ./
+COPY *.sh ./
+COPY .env* ./
+
+# Ensure start script is executable
+RUN chmod +x /app/start_query.sh
+
+# Create required directories
+RUN mkdir -p /app/input /app/output /app/.DuckDB
+
+# Set environment
+ENV PYTHONUNBUFFERED=1
+
+# Default command uses the startup script to download DB and run MCP
+CMD ["/app/start_query.sh"]

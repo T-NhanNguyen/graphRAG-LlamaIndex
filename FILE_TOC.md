@@ -34,6 +34,15 @@
 - `json_to_tson.py`: Token optimization. Converts JSON lists into "Tabular SON" (TSON) format to reduce context window usage.
 - `.graphrag-alias.[ps1/sh]`: Shell utility scripts. Provides environment aliases for the `graphrag` CLI (PowerShell and Bash).
 
+## Docker & Deployment
+
+- `Dockerfile.indexer`: Heavy-duty image for local indexing. Includes PyTorch, GLiNER, and all graph-building dependencies.
+- `Dockerfile.query`: Lightweight image for cloud/agent deployment. Optimized for fast querying with no ML-heavy overhead (~1-2GB).
+- `requirements_index.txt`: Dependencies for the full indexing pipeline.
+- `requirements_query.txt`: Minimal dependencies for search and the MCP server.
+- `start_query.sh`: Deployment entrypoint. Automatically syncs databases from R2/HTTP on startup for the query image.
+- `docker-compose.yml`: Multi-service orchestration for decoupled indexing and querying.
+
 ## Documentation
 
 - `docs/system-overview.md`: Architectural deep dive into the 📥 input, ⚙️ processing, 💾 storage, and 🔍 query layers.

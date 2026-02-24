@@ -1,3 +1,18 @@
+# GraphRAG LlamaIndex
+
+A decoupled GraphRAG implementation optimized for local indexing and lightweight cloud querying.
+
+## Two-Image Architecture
+
+This project is split into two specialized Docker environments to optimize build times and deployment footprint:
+
+1.  **`graphrag-indexer` (Image A)**:
+    - **Purpose**: Local-only heavy processing (indexing, embedding, graph building).
+    - **Contains**: PyTorch, GLiNER, Graspologic, and all ML dependencies.
+2.  **`graphrag-query` (Image B)**:
+    - **Purpose**: Lightweight cloud-ready query engine (~1-2GB).
+    - **Contains**: DuckDB, MCP server, and search retrieval. **NO PyTorch/ML overhead**.
+
 ## Setup
 
 ### 1. Clone the repo
@@ -8,7 +23,18 @@
 
 `cp .env.example .env`
 
-### 3. Edit .env and set their data directory
+### 3. Build the Images
+
+```bash
+# Build both images
+docker compose build
+
+# Or build individually
+docker build -t graphrag-indexer -f Dockerfile.indexer .
+docker build -t graphrag-query -f Dockerfile.query .
+```
+
+### 4. Edit .env and set your data directory
 
 > GRAPHRAG_DATA_DIR=/path/to/your/documents
 
@@ -98,15 +124,16 @@ docker compose run --rm graphrag python graphrag_cli.py register my-database \
 - Immediate Access: You can now run status, search, or index using that name (e.g., graphrag search my-database "...").
 - No Data Loss: It doesn't move or modify your actual .duckdb file; it just "bookmarks" it for the CLI.
 
-### 6. Index and query
+```bash
+# Register a folder as a database
+graphrag start my-database --source /app/input
 
-TIP: Search keywords first then use the output to search for thematic or connection with better yields... I may look into a feature for Recurssion-LLM (Local) to automate this...
+# Index (Uses graphrag-indexer image)
+graphrag index my-database
 
-```
-docker compose run --rm graphrag python graphrag_cli.py start my-database --input /app/input
-docker compose run --rm graphrag python graphrag_cli.py index my-database
-docker compose run --rm graphrag python graphrag_cli.py search my-database "query"
-docker compose run --rm graphrag python graphrag_cli.py list
+# Search (Uses graphrag-query image)
+graphrag search my-database "How does Bloom Energy work?"
+graphrag list
 ```
 
 Guide for Window Users:
@@ -155,6 +182,19 @@ graphrag register <db> --db-path /root/.graphrag/<index-vault>/<path>  # Import 
 # you're replacing that section with /root/.graphrag.
 ```
 
+## S3 Database Backup (Git-like push)
+
+You can push your local knowledge graph databases to an S3 bucket for cloud backup.
+
+1.  **Configure S3** in your `.env`:
+    - `S3_BUCKET_NAME`: Your bucket name.
+    - `S3_DB_VAULT_DIR`: Path to your `.graphrag/index-vault` folder.
+2.  **Initialize Aliases**:
+    - `. .\.graphrag-alias.ps1` (PowerShell)
+3.  **Push to Cloud**:
+    - `graphrag-push`: Backup the active database to S3.
+    - `graphrag-push <db-name>`: Backup a specific database.
+
 ## Troubleshooting
 
 ### WSL Search Returns No Results (PowerShell Works)
@@ -187,20 +227,27 @@ Error: docker: open /mnt/e/.../.env: The system cannot find the path specified.
 | WSL/Linux   | `/mnt/e/project` | Used by Gemini CLI in WSL  |
 | Windows     | `E:/project`     | Required by Docker Desktop |
 
-**Solution**: Update your `mcp_config.json` volume mounts to use Windows paths:
+**Solution**: Use the lightweight `graphrag-query` image and ensure Windows-style paths (e.g., `E:/...` instead of `/mnt/e/...`) in your `mcp_config.json`:
 
 ```json
-// Before (WSL paths - won't work)
-"-v", "/mnt/e/ai-workspace/projects/graphRAG-LlamaIndex:/app",
-"--env-file", "/mnt/e/ai-workspace/projects/graphRAG-LlamaIndex/.env",
-
-// After (Windows paths - works)
-"-v", "E:/ai-workspace/projects/graphRAG-LlamaIndex:/app",
-"--env-file", "E:/ai-workspace/projects/graphRAG-LlamaIndex/.env",
+{
+  "mcpServers": {
+  "graphrag": {
+    "command": "docker",
+    "args": [
+      "run",
+      "-i",
+      "--rm",
+      "graphrag-query",
+      "-v",
+      "E:/ai-workspace/projects/graphRAG-LlamaIndex:/app",
+      "-v",
+      "C:/Users/nhan/.graphrag:/root/.graphrag",
+      "--env-file",
+      "E:/ai-workspace/projects/graphRAG-LlamaIndex/.env"
+    ]
+  }
+}
 ```
 
-Also ensure the registry directory is mounted:
-
-```json
-"-v", "C:/Users/<username>/.graphrag:/root/.graphrag",
-```
+Also ensure the registry directory is mounted (`C:/Users/nhan/.graphrag:/root/.graphrag`) so the container can find your databases.

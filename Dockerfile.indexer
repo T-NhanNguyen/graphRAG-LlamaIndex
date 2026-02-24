@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for layer caching
-COPY requirements.txt .
+COPY requirements_index.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy package.json and install MCP dependencies
@@ -21,8 +21,8 @@ RUN npm install
 # Pre-install DuckDB extensions for vector search support
 RUN python -c "import duckdb; conn = duckdb.connect(':memory:'); conn.execute('INSTALL vss;')"
 
-# Pre-download GLiNER model to bake into image
-RUN python -c "from gliner import GLiNER; GLiNER.from_pretrained('urchade/gliner_large-v2.1')"
+# Pre-download GLiNER model to bake into image (Disabled to prevent build timeouts)
+# RUN python -c "from gliner import GLiNER; GLiNER.from_pretrained('urchade/gliner_large-v2.1')"
 
 # Copy all source files
 COPY *.py ./
