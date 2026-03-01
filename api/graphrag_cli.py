@@ -3,12 +3,13 @@
 GraphRAG CLI - Intuitive command-line interface for knowledge graph management.
 
 Commands:
-    graphrag start <db> [--input <path>]     Create/initialize a database
-    graphrag index <db> [--prune]            Index documents into database
+    graphrag start <db> [--source <path>]    Create/initialize a database
+    graphrag index <db> [--prune] [--reset] [--llm-prune] [--source <path>]
+                                             Index documents into database
     graphrag search <db> <query> [options]   Query the knowledge graph
     graphrag list                            List all databases
     graphrag status <db>                     Show database statistics
-    graphrag delete <db> [--force]           Remove a database
+    graphrag delete <db> [--force] [--files] Remove a database
     graphrag register <db> --db-path <path>  Register existing .duckdb file
 
 Design Principles (for future scalability):
@@ -21,13 +22,26 @@ import sys
 import os
 import argparse
 import logging
+import time
 from typing import Optional, Dict, Any
 
 # Ensure project root is in path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from workspace_config import getRegistry, DEFAULT_DATABASE_NAME
-from graphrag_config import GraphRAGSettings, SearchType
+from core import (
+    getRegistry, 
+    DEFAULT_DATABASE_NAME, 
+    GraphRAGSettings, 
+    SearchType, 
+    getSettingsForDatabase, 
+    getStore, 
+    GraphRAGIndexer, 
+    GraphRAGQueryEngine,
+    getLLMClient,
+    settings,
+    RelationshipProvider,
+    getEmbeddings
+)
 
 # Configure logging
 logging.basicConfig(
@@ -75,12 +89,11 @@ class GraphRAGService:
         self,
         dbName: Optional[str] = None,
         prune: bool = False,
-        reset: bool = False
+        reset: bool = False,
+        llmPrune: bool = False,
+        sourceFolder: Optional[str] = None
     ) -> Dict[str, Any]:
         # Index documents into the database and return statistics.
-        from graphrag_config import getSettingsForDatabase
-        from duckdb_store import getStore
-        from indexer import GraphRAGIndexer
         
         settings = getSettingsForDatabase(dbName)
         store = getStore(settings.DUCKDB_PATH)
@@ -91,7 +104,7 @@ class GraphRAGService:
             logger.warning(f"Resetting database '{dbName or DEFAULT_DATABASE_NAME}' before re-indexing...")
             indexer.resetDatabase()
             
-        stats = indexer.indexDirectory(settings.INPUT_DIR)
+        stats = indexer.indexDirectory(sourceFolder or settings.INPUT_DIR)
         
         # Update last indexed timestamp
         registry = getRegistry()
@@ -110,7 +123,7 @@ class GraphRAGService:
         }
         
         if prune:
-            pruneStats = indexer.pruneNoise(runLLMScore=False)
+            pruneStats = indexer.pruneNoise(runLLMScore=llmPrune)
             result["chunksPruned"] = pruneStats.get("pruned", 0)
         
         return result
@@ -123,9 +136,6 @@ class GraphRAGService:
         topK: int = 10
     ) -> Dict[str, Any]:
         # Execute a search query and return results.
-        from graphrag_config import getSettingsForDatabase
-        from duckdb_store import getStore
-        from query_engine import GraphRAGQueryEngine
         
         # Map CLI search types to internal enum
         typeMap = {
@@ -173,8 +183,6 @@ class GraphRAGService:
     
     def status(self, dbName: Optional[str] = None) -> Dict[str, Any]:
         # Get database statistics.
-        from graphrag_config import getSettingsForDatabase
-        from duckdb_store import getStore
         
         settings = getSettingsForDatabase(dbName)
         store = getStore(settings.DUCKDB_PATH)
@@ -268,8 +276,6 @@ def _formatTable(headers: list, rows: list) -> None:
 
 def _testLLM() -> bool:
     # Test LLM connection and display status. Returns True if successful.
-    from llm_client import getLLMClient
-    from graphrag_config import settings, RelationshipProvider
     
     client = getLLMClient()
     providerName = "OpenRouter" if settings.RELATIONSHIP_PROVIDER == RelationshipProvider.OPENROUTER else "Local LLM"
@@ -288,7 +294,6 @@ def _testLLM() -> bool:
 
 def _testEmbeddings() -> bool:
     # Test Embedding connection and display status. Returns True if successful.
-    from embedding_provider import getEmbeddings
     
     client = getEmbeddings()
     print(f"Testing Embedding connection (Local)...", end="", flush=True)
@@ -346,7 +351,9 @@ def _cmdIndex(args, service: GraphRAGService) -> int:
         result = service.index(
             dbName=dbName,
             prune=getattr(args, 'prune', False),
-            reset=getattr(args, 'reset', False)
+            reset=getattr(args, 'reset', False),
+            llmPrune=getattr(args, 'llm_prune', False),
+            sourceFolder=getattr(args, 'source', None)
         )
         
         _formatSuccess(f"Indexing complete")
@@ -506,6 +513,7 @@ def _cmdRegister(args, service: GraphRAGService) -> int:
 
 def main():
     # Main CLI entry point.
+    start_time = time.time()
     parser = argparse.ArgumentParser(
         prog='graphrag',
         description='GraphRAG - Knowledge Graph Management CLI',
@@ -524,7 +532,9 @@ def main():
     p_index = subparsers.add_parser('index', help='Index documents into database')
     p_index.add_argument('database', nargs='?', help='Database name (default: "default")')
     p_index.add_argument('--prune', action='store_true', help='Prune low-quality content after indexing')
+    p_index.add_argument('--llm-prune', action='store_true', help='Use LLM scoring during pruning (expensive)')
     p_index.add_argument('--reset', action='store_true', help='Clear database and reindex all documents')
+    p_index.add_argument('--source', '-s', help='Override source folder for this run')
     p_index.set_defaults(func=_cmdIndex)
     
     # --- search ---
@@ -567,7 +577,14 @@ def main():
         return 0
     
     service = GraphRAGService()
-    return args.func(args, service)
+    exit_code = args.func(args, service)
+    
+    elapsed = time.time() - start_time
+    minutes = int(elapsed // 60)
+    seconds = int(elapsed % 60)
+    print(f"\nTotal time elapsed: {minutes}m {seconds}s")
+    
+    return exit_code
 
 
 if __name__ == "__main__":

@@ -127,22 +127,22 @@ Combines two search strategies:
 
 ```mermaid
 graph TD
-    A["📄 Raw Documents<br/>(Markdown Files)"] -->|"Chunking"| B["📦 Text Chunks<br/>(1000 chars, 200 overlap)"]
+    A[" Raw Documents<br/>(Markdown Files)"] -->|"Chunking"| B[" Text Chunks<br/>(1000 chars, 200 overlap)"]
 
-    B -->|"Embedding Model"| C["🔢 Dense Vectors<br/>(Semantic meaning)"]
-    B -->|"BM25 Tokenizer"| D["🔤 Sparse Vectors<br/>(Keyword stats)"]
-    B -->|"GLiNER + LLM"| E["🧩 Entities<br/>(Nodes)"]
-    E -->|"LLM Extraction"| F["🔗 Relationships<br/>(Edges)"]
+    B -->|"Embedding Model"| C[" Dense Vectors<br/>(Semantic meaning)"]
+    B -->|"BM25 Tokenizer"| D[" Sparse Vectors<br/>(Keyword stats)"]
+    B -->|"GLiNER + LLM"| E[" Entities<br/>(Nodes)"]
+    E -->|"LLM Extraction"| F[" Relationships<br/>(Edges)"]
 
-    C --> G["💾 DuckDB<br/>(Unified Storage)"]
+    C --> G[" DuckDB<br/>(Unified Storage)"]
     D --> G
     E --> G
     F --> G
 
-    H["❓ User Query"] -->|"Embed + Tokenize"| I["🔍 Hybrid Search<br/>(BM25 + Vector + RRF)"]
+    H[" User Query"] -->|"Embed + Tokenize"| I[" Hybrid Search<br/>(BM25 + Vector + RRF)"]
     I --> G
-    G -->|"Chunks + Graph Context"| J["🤖 LLM Synthesis"]
-    J --> K["✅ Final Answer"]
+    G -->|"Chunks + Graph Context"| J[" LLM Synthesis"]
+    J --> K[" Final Answer"]
 
     style A fill:#e1f5ff
     style G fill:#fff4e1
@@ -155,11 +155,11 @@ graph TD
 
 Unlike cloud-only solutions like Microsoft's GraphRAG or Neo4j-based systems, this implementation:
 
-✅ **Runs 100% locally** (your data never leaves your machine)  
-✅ **Uses a single DuckDB file** (no complex database setup)  
-✅ **Supports both local models and cloud APIs** (flexible cost/quality trade-offs)  
-✅ **Has auto-resume** (if indexing crashes, it picks up where it left off)  
-✅ **Integrates with AI agents** via Model Context Protocol (MCP)
+**Runs 100% locally** (your data never leaves your machine)  
+ **Uses a single DuckDB file** (no complex database setup)  
+ **Supports both local models and cloud APIs** (flexible cost/quality trade-offs)  
+ **Has auto-resume** (if indexing crashes, it picks up where it left off)  
+ **Integrates with AI agents** via Model Context Protocol (MCP)
 
 ---
 

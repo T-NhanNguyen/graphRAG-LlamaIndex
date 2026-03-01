@@ -22,13 +22,19 @@ RUN npm install
 RUN python -c "import duckdb; conn = duckdb.connect(':memory:'); conn.execute('INSTALL vss;')"
 
 # Copy all source files
+COPY core/ ./core/
+COPY tools/ ./tools/
+COPY api/ ./api/
 COPY *.py ./
 COPY *.ts ./
-COPY *.sh ./
 COPY .env* ./
-
-# Ensure start script is executable
+# Copy and ensure start script is executable
+COPY deployment/fly/start_query.sh /app/start_query.sh
 RUN chmod +x /app/start_query.sh
+
+# Embed the pre-computed database into the container for standalone deployment
+RUN mkdir -p /root/.graphrag/index-vault
+COPY index-vault /root/.graphrag/index-vault/
 
 # Create required directories
 RUN mkdir -p /app/input /app/output /app/.DuckDB

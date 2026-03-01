@@ -45,22 +45,22 @@ The system detects:
 
 ```mermaid
 graph TD
-    A["📄 Raw Document"] --> B["Stage 0: Whitespace Normalization"]
-    B --> C["📦 Text Chunks"]
+    A[" Raw Document"] --> B["Stage 0: Whitespace Normalization"]
+    B --> C[" Text Chunks"]
 
     C --> D{"Stage 1: Preprocessing Filters"}
-    D -->|"✅ Pass"| E["Embed & Index"]
-    D -->|"❌ Fail"| F1["🗑️ Pruning Log"]
+    D -->|" Pass"| E["Embed & Index"]
+    D -->|" Fail"| F1[" Pruning Log"]
 
     E --> G{"Stage 2: Graph Filters<br/>(Post-Extraction)"}
-    G -->|"✅ Has Entities"| H["💾 Store in DB"]
-    G -->|"❌ Stranded"| F2["🗑️ Pruning Log"]
+    G -->|" Has Entities"| H[" Store in DB"]
+    G -->|" Stranded"| F2[" Pruning Log"]
 
     H --> I{"Stage 3: Semantic Filters<br/>(Optional)"}
-    I -->|"✅ High Quality"| J["✅ Final Graph"]
-    I -->|"❌ Outlier/Low Quality"| F3["🗑️ Pruning Log"]
+    I -->|" High Quality"| J[" Final Graph"]
+    I -->|" Outlier/Low Quality"| F3[" Pruning Log"]
 
-    F1 & F2 & F3 --> K["📊 Pruning Evidence Viewer"]
+    F1 & F2 & F3 --> K[" Pruning Evidence Viewer"]
 
     style D fill:#fff3cd
     style G fill:#cfe2ff

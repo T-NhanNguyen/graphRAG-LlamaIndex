@@ -5,9 +5,9 @@ from dataclasses import dataclass
 from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 
-from graphrag_config import settings
-from duckdb_store import DuckDBStore
-from bm25_index import BM25Scorer, BM25Indexer
+from core import settings
+from core import DuckDBStore
+from .bm25_index import BM25Scorer, BM25Indexer
 
 logger = logging.getLogger(__name__)
 

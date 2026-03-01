@@ -22,13 +22,13 @@ services:
     stdin_open: true
     tty: true
     # Default: show CLI help
-    command: ["python", "graphrag_cli.py", "--help"]
+    command: ["python", "-m", "api.graphrag_cli", "--help"]
 
   # Run with: docker compose up query
   query:
     build: 
       context: .
-      dockerfile: Dockerfile.query
+      dockerfile: deployment/aws/Dockerfile.query
     image: graphrag-query
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -46,7 +46,7 @@ services:
       - PYTHONUNBUFFERED=1
       - NODE_NO_WARNINGS=1
       - GRAPHRAG_DATABASE=${GRAPHRAG_DATABASE:-default}
-    command: ["npx", "tsx", "mcp_server.ts"]
+    command: ["npx", "tsx", "api/mcp_server.ts"]
 
 volumes:
   hf_cache:

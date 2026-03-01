@@ -32,7 +32,8 @@ Write-Host "Pushing image to ECR..." -ForegroundColor Cyan
 docker push "${ECR_REPO_URI}:latest"
 
 if ($LASTEXITCODE -eq 0) {
-    Write-Host "✅ Image pushed successfully to $ECR_REPO_URI" -ForegroundColor Green
-} else {
-    Write-Host "❌ Push failed." -ForegroundColor Red
+    Write-Host " Image pushed successfully to $ECR_REPO_URI" -ForegroundColor Green
+}
+else {
+    Write-Host " Push failed." -ForegroundColor Red
 }

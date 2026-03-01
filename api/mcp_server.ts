@@ -134,8 +134,8 @@ if (TRANSPORT === "sse") {
     });
 
     const PORT = process.env.PORT || 8000;
-    app.listen(PORT, () => {
-        console.error(`GraphRAG MCP Server (SSE) started on port ${PORT}`);
+    app.listen(Number(PORT), "0.0.0.0", () => {
+        console.error(`GraphRAG MCP Server (SSE) listening on 0.0.0.0:${PORT}`);
     });
 } else {
     // Default to Stdio for backward compatibility

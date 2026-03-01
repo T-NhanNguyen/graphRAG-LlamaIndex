@@ -8,7 +8,7 @@ from dataclasses import dataclass
 import duckdb
 import numpy as np
 
-from graphrag_config import settings, EntityType
+from core import settings, EntityType
 
 # Pipeline status enum for tracking indexing progress
 class PipelineStatus:

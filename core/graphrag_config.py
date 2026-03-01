@@ -136,8 +136,8 @@ Text: {text}
 
 JSON:"""
     # Entity Extraction
-    MAX_ENTITIES_PER_CHUNK: int = 10
-    MAX_RELATIONSHIPS_PER_CHUNK: int = 15
+    MAX_ENTITIES_PER_CHUNK: int = 20
+    MAX_RELATIONSHIPS_PER_CHUNK: int = 25
     
     BATCH_ENTITY_EXTRACTION_PROMPT: str = """Extract entities from {num_chunks} chunks. Process each independently. Tolerate formatting issues.
 
@@ -215,7 +215,7 @@ Return ONLY a float:"""
     @classmethod
     def forDatabase(cls, dbName: str = None) -> "GraphRAGSettings":
         # Create settings instance with database-specific paths from workspace registry.
-        from workspace_config import getRegistry
+        from .workspace_config import getRegistry
         
         registry = getRegistry()
         dbConfig = registry.getOrDefault(dbName)

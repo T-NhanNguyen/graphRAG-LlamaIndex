@@ -6,6 +6,7 @@ import logging
 import glob
 import json
 import re
+import asyncio
 import argparse
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -13,13 +14,15 @@ from typing import List, Optional, Dict, Any
 from dataclasses import dataclass
 from pathlib import Path
 
-from graphrag_config import settings
-from duckdb_store import DuckDBStore, SourceDocument, DocumentChunk, Entity, Relationship, getStore, PipelineStatus
-from bm25_index import BM25Indexer
-from embedding_provider import DockerModelRunnerEmbeddings, getEmbeddings
-from llm_client import LocalLLMClient, getLLMClient, getRelationshipClient
-from entity_extractor import BaseEntityExtractor, ExtractorFactory
-from garbage_filter import garbageFilter, garbageLogger
+# Package internal imports
+from . import settings
+from .graphrag_config import ExtractionMode
+from .duckdb_store import DuckDBStore, SourceDocument, DocumentChunk, Entity, Relationship, getStore, PipelineStatus
+from .embedding_provider import DockerModelRunnerEmbeddings, getEmbeddings
+from .llm_client import LocalLLMClient, getLLMClient, getRelationshipClient
+
+# Third-party tool imports
+from tools import BM25Indexer, BaseEntityExtractor, ExtractorFactory, garbageFilter, garbageLogger
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +43,7 @@ class IndexingStats:
     relationshipsExtracted: int = 0
     embeddingsGenerated: int = 0
     bm25TokensIndexed: int = 0
+    timeTaken: float = 0.0
 
 
 class SemanticChunker:
@@ -195,9 +199,24 @@ class GraphRAGIndexer:
                  embeddings: Optional[DockerModelRunnerEmbeddings] = None,
                  llmClient: Optional[LocalLLMClient] = None,
                  entityExtractor: Optional[BaseEntityExtractor] = None,
-                 enableEntityExtraction: bool = True):
+                 enableEntityExtraction: bool = True,
+                 enableLoggingHeader: bool = True):
         # Initialize indexer with optional component injection.
         self.store = store or getStore()
+        self.enableLoggingHeader = enableLoggingHeader
+        
+        # Configure logging if enabled (this configures the root logger)
+        if enableLoggingHeader:
+            logging.getLogger().setLevel(logging.INFO)
+            # Find and update any handlers to use the specific format
+            new_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+            for handler in logging.getLogger().handlers:
+                handler.setFormatter(new_formatter)
+        else:
+            # If disabled, we might want to suppress INFO logs or reformat them
+            # E.g., setting level to WARNING so INFO logs don't show
+            logging.getLogger().setLevel(logging.WARNING)
+
         self.embeddings = embeddings or getEmbeddings()
         self.llmClient = llmClient or getLLMClient()
         self.relationshipClient = getRelationshipClient()  # Dedicated client for grunt work
@@ -382,44 +401,59 @@ class GraphRAGIndexer:
             # Split document chunks into batches
             batches = [docChunks[i:i + batchSize] for i in range(0, len(docChunks), batchSize)]
             
-            # 1. Extract Entities (Parallel across batches)
-            # Uses the configured entity extractor (LLM or GLiNER)
-            documentEntityCollection = {} 
-            with ThreadPoolExecutor(max_workers=concurrency) as executor:
-                future_to_batch = {
-                    executor.submit(self.entityExtractor.extractEntitiesBatch, batch): batch
-                    for batch in batches
-                }
-                
-                for future in as_completed(future_to_batch):
-                    batch = future_to_batch[future]
-                    try:
-                        batchExtractedEntities = future.result()
-                        documentEntityCollection.update(batchExtractedEntities)
-                        
-                        entityCount = sum(len(extractedEntities) for extractedEntities in batchExtractedEntities.values())
-                        logger.info(f"  Extracted {entityCount} entities from {len(batch)} chunks")
-                    except Exception as exc:
-                        logger.error(f"Entity extraction failed for batch: {exc}")
+            # --- Unified Async Batch Pipeline ---
+            # Each batch coroutine: extract entities THEN extract relationships
+            # immediately using those entities. Concurrency is bounded by semaphore.
+            documentEntityCollection = {}
 
-            # 2. Extract Relationships (LLM only - Batch discovery)
-            # IMPORTANT: Pass only BATCH-LOCAL entities to match original design (~20 entities/batch)
-            # See: batched_relationship_extraction_analysis.md Section 7.1.1
-            # Original assumed: "Entity List: 20 entities × 15 tokens = 300 tokens"
-            # Passing all document entities (e.g., 1350 from GLiNER) would balloon context to 5500+ tokens
-            if documentEntityCollection:
-                for batch in batches:
-                    # Build batch-local entity map (only entities from chunks in THIS batch)
+            async def _processBatchAsync(
+                batch: List[DocumentChunk],
+                semaphore: asyncio.Semaphore
+            ):
+                async with semaphore:
+                    # Step 1: entity extraction
+                    batchEntityMap = await self.entityExtractor.extractEntitiesBatchAsync(batch)
+
+                    # Step 2: relationship extraction using local entities
                     batchChunkIds = {c.chunkId for c in batch}
-                    batchEntityMap = {
-                        cid: entities 
-                        for cid, entities in documentEntityCollection.items() 
-                        if cid in batchChunkIds
+                    batchEntityMapFiltered = {
+                        cid: ents
+                        for cid, ents in batchEntityMap.items()
+                        if cid in batchChunkIds and ents
                     }
-                    
-                    if batchEntityMap:
-                        batchRelationshipCollection = self.relationshipClient.extractRelationshipsBatch(batch, batchEntityMap)
-                        allRelationships.extend(batchRelationshipCollection.values())
+
+                    if batchEntityMapFiltered:
+                        batchRelMap = await self.relationshipClient.extractRelationshipsBatchAsync(
+                            batch, batchEntityMapFiltered
+                        )
+                    else:
+                        batchRelMap = {}
+
+                    return batchEntityMap, batchRelMap
+
+            async def _runAllBatchesAsync():
+                semaphore = asyncio.Semaphore(concurrency)
+                tasks = [_processBatchAsync(batch, semaphore) for batch in batches]
+                return await asyncio.gather(*tasks, return_exceptions=True)
+
+            batchResults = asyncio.run(_runAllBatchesAsync())
+
+            for result in batchResults:
+                if isinstance(result, Exception):
+                    logger.error(f"Batch extraction failed: {result}")
+                    continue
+                batchEntityMap, batchRelMap = result
+
+                # Accumulate entities
+                documentEntityCollection.update(batchEntityMap)
+
+                # Accumulate relationships
+                allRelationships.extend(batchRelMap.values())
+
+                entityCount = sum(len(e) for e in batchEntityMap.values())
+                relCount = sum(len(r) for r in batchRelMap.values())
+                logger.info(f"  Batch done: {entityCount} entities, {relCount} relationships")
+
             
             # Accumulate all entities from this document into the master list
             for entitiesFromChunk in documentEntityCollection.values():
@@ -605,6 +639,8 @@ class GraphRAGIndexer:
     
     def indexDirectory(self, inputDir: str = None, skipIfExists: bool = True) -> IndexingStats:
         # Index all markdown and text files in a directory with automatic pipeline resume.
+        start_time = time.time()
+        
         inputDir = inputDir or settings.INPUT_DIR
         allFiles = self._discoverFiles(inputDir)
         if not allFiles:
@@ -679,11 +715,13 @@ class GraphRAGIndexer:
         # Ensure HNSW index exists even if Stage 2 was skipped
         self.store.ensureHnswIndex()
 
+        self.stats.timeTaken = time.time() - start_time
         logger.info(f"Indexing complete: {self.stats}")
         return self.stats
     
     def indexFile(self, filePath: str) -> IndexingStats:
         # Index a single file. Returns indexing statistics.
+        start_time = time.time()
         docId = self.indexDocument(filePath)
         
         if docId:
@@ -692,6 +730,7 @@ class GraphRAGIndexer:
             self.indexBM25(chunks)
             self.extractEntities(chunks)
         
+        self.stats.timeTaken = time.time() - start_time
         return self.stats
 
 
@@ -701,8 +740,8 @@ def main():
     import argparse
     
     parser = argparse.ArgumentParser(description="GraphRAG Indexing Pipeline")
-    parser.add_argument("--input", "-i", default=settings.INPUT_DIR,
-                       help="Input directory with markdown files")
+    parser.add_argument("--source", "-s", default=settings.INPUT_DIR,
+                       help="Source folder containing documents")
     parser.add_argument("--file", "-f", help="Single file to index")
     parser.add_argument("--no-entities", action="store_true",
                        help="Skip entity extraction")
@@ -726,12 +765,10 @@ def main():
     # Create indexer
     extraction_mode = None
     if args.extraction_mode:
-        from graphrag_config import ExtractionMode
         extraction_mode = ExtractionMode(args.extraction_mode)
         
     entity_extractor = None
     if extraction_mode:
-        from entity_extractor import ExtractorFactory
         entity_extractor = ExtractorFactory.getExtractor(mode=extraction_mode)
         
     indexer = GraphRAGIndexer(
@@ -754,7 +791,7 @@ def main():
     if args.file:
         indexer.indexFile(args.file)
     else:
-        indexer.indexDirectory(args.input, skipIfExists=skipIfExists)
+        indexer.indexDirectory(args.source, skipIfExists=skipIfExists)
     
     # Run post-extraction pruning if requested
     if args.prune or args.llm_prune:
@@ -773,16 +810,19 @@ def main():
     print(f"Entities:      {indexer.stats.entitiesExtracted}")
     print(f"Relationships: {indexer.stats.relationshipsExtracted}")
     
+    # Format time
+    elapsed = indexer.stats.timeTaken
+    minutes = int(elapsed // 60)
+    seconds = int(elapsed % 60)
+    print(f"Time Taken:    {minutes}m {seconds}s")
+    
     # Show corpus stats
     dbStats = store.getStats()
     print("\n=== Database Stats ===")
     for table, count in dbStats.items():
         print(f"{table}: {count}")
     
-    elapsed = time.time() - start_time
-    minutes = int(elapsed // 60)
-    seconds = int(elapsed % 60)
-    print(f"\nTotal time elapsed: {minutes}m {seconds}s")
+    # Time calculation moved to CLI
 
 
 if __name__ == "__main__":

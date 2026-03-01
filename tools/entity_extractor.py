@@ -1,10 +1,11 @@
+import asyncio
 import logging
 from abc import ABC, abstractmethod
 from typing import List, Dict, Optional
 from dataclasses import dataclass
 
-from graphrag_config import settings, ExtractionMode
-from duckdb_store import Entity, DocumentChunk
+from core import settings, ExtractionMode
+from core import Entity, DocumentChunk, getLLMClient
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +21,11 @@ class BaseEntityExtractor(ABC):
         # Extract entities from a batch of chunks for efficiency
         pass
 
+    @abstractmethod
+    async def extractEntitiesBatchAsync(self, chunks: List[DocumentChunk]) -> Dict[str, List[Entity]]:
+        # Async version of extractEntitiesBatch for use in asyncio pipelines.
+        pass
+
 class LLMEntityExtractor(BaseEntityExtractor):
     # Adapter for existing LLM-based entity extraction.
     # Wraps LocalLLMClient to adhere to the BaseEntityExtractor interface
@@ -33,6 +39,9 @@ class LLMEntityExtractor(BaseEntityExtractor):
     def extractEntitiesBatch(self, chunks: List[DocumentChunk]) -> Dict[str, List[Entity]]:
         return self.llmClient.extractEntitiesBatch(chunks)
 
+    async def extractEntitiesBatchAsync(self, chunks: List[DocumentChunk]) -> Dict[str, List[Entity]]:
+        return await self.llmClient.extractEntitiesBatchAsync(chunks)
+
 class ExtractorFactory:
     # To instantiate the appropriate entity extractor based on configuration
     @staticmethod
@@ -40,11 +49,12 @@ class ExtractorFactory:
         extractionMode = mode or settings.ENTITY_EXTRACTION_MODE
         
         if extractionMode == ExtractionMode.HYBRID:
-            from gliner_extractor import GLiNEREntityExtractor
+            # Lazy import: guards the heavy `gliner` library from loading in the
+            # query image, which doesn't install GLiNER. Do NOT move to header.
+            from .gliner_extractor import GLiNEREntityExtractor
             return GLiNEREntityExtractor()
         else:
             # Default to LLM_ONLY
             if llmClient is None:
-                from llm_client import getLLMClient
                 llmClient = getLLMClient()
             return LLMEntityExtractor(llmClient)

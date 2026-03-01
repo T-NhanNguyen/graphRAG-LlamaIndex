@@ -1,10 +1,10 @@
-# 🪣 GraphRAG S3 Cloud Backup Cheat Sheet
+# GraphRAG S3 Cloud Backup Cheat Sheet
 
 Quick reference for managing your knowledge graph backups and generic S3 uploads.
 
 ---
 
-## 🛠️ Setup & Configuration
+## Setup & Configuration
 
 Ensure your `.env` file is configured:
 
@@ -23,7 +23,7 @@ Reload aliases in a new terminal session:
 
 ---
 
-## 🚀 Common Commands
+## Common Commands
 
 ### 1. Database Backups (The "Push")
 
@@ -51,7 +51,7 @@ Upload any project file or data folder to S3.
 
 ---
 
-## 📥 Restoration (The "Pull")
+## Restoration (The "Pull")
 
 If you are on a new machine or need to recover data, use the AWS CLI to pull from your vault:
 
@@ -69,7 +69,7 @@ aws s3 cp s3://investment-research-graphrag-tnhan/README.md ./README.md
 
 ---
 
-## 🧹 Maintenance
+## Maintenance
 
 ### Local Cleanup
 
@@ -91,7 +91,7 @@ aws s3 ls s3://investment-research-graphrag-tnhan/backups/index-vault/ --recursi
 
 ---
 
-## 🐳 Docker Cloud Deployment (ECR)
+## Docker Cloud Deployment (ECR)
 
 Before your web app can run in the cloud, you need to push the "software" (Image) to AWS ECR.
 
