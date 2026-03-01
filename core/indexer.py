@@ -42,6 +42,7 @@ class IndexingStats:
     relationshipsExtracted: int = 0
     embeddingsGenerated: int = 0
     bm25TokensIndexed: int = 0
+    timeTaken: float = 0.0
 
 
 class SemanticChunker:
@@ -197,9 +198,24 @@ class GraphRAGIndexer:
                  embeddings: Optional[DockerModelRunnerEmbeddings] = None,
                  llmClient: Optional[LocalLLMClient] = None,
                  entityExtractor: Optional[BaseEntityExtractor] = None,
-                 enableEntityExtraction: bool = True):
+                 enableEntityExtraction: bool = True,
+                 enableLoggingHeader: bool = True):
         # Initialize indexer with optional component injection.
         self.store = store or getStore()
+        self.enableLoggingHeader = enableLoggingHeader
+        
+        # Configure logging if enabled (this configures the root logger)
+        if enableLoggingHeader:
+            logging.getLogger().setLevel(logging.INFO)
+            # Find and update any handlers to use the specific format
+            new_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+            for handler in logging.getLogger().handlers:
+                handler.setFormatter(new_formatter)
+        else:
+            # If disabled, we might want to suppress INFO logs or reformat them
+            # E.g., setting level to WARNING so INFO logs don't show
+            logging.getLogger().setLevel(logging.WARNING)
+
         self.embeddings = embeddings or getEmbeddings()
         self.llmClient = llmClient or getLLMClient()
         self.relationshipClient = getRelationshipClient()  # Dedicated client for grunt work
@@ -405,23 +421,31 @@ class GraphRAGIndexer:
                         logger.error(f"Entity extraction failed for batch: {exc}")
 
             # 2. Extract Relationships (LLM only - Batch discovery)
-            # IMPORTANT: Pass only BATCH-LOCAL entities to match original design (~20 entities/batch)
-            # See: batched_relationship_extraction_analysis.md Section 7.1.1
-            # Original assumed: "Entity List: 20 entities × 15 tokens = 300 tokens"
-            # Passing all document entities (e.g., 1350 from GLiNER) would balloon context to 5500+ tokens
             if documentEntityCollection:
-                for batch in batches:
-                    # Build batch-local entity map (only entities from chunks in THIS batch)
-                    batchChunkIds = {c.chunkId for c in batch}
-                    batchEntityMap = {
-                        cid: entities 
-                        for cid, entities in documentEntityCollection.items() 
-                        if cid in batchChunkIds
-                    }
+                with ThreadPoolExecutor(max_workers=concurrency) as rel_executor:
+                    rel_futures = {}
+                    for batchIdx, batch in enumerate(batches):
+                        # Build batch-local entity map (only entities from chunks in THIS batch)
+                        batchChunkIds = {c.chunkId for c in batch}
+                        batchEntityMap = {
+                            cid: entities 
+                            for cid, entities in documentEntityCollection.items() 
+                            if cid in batchChunkIds
+                        }
+                        
+                        if batchEntityMap:
+                            rel_futures[rel_executor.submit(self.relationshipClient.extractRelationshipsBatch, batch, batchEntityMap)] = (batchIdx, len(batch))
                     
-                    if batchEntityMap:
-                        batchRelationshipCollection = self.relationshipClient.extractRelationshipsBatch(batch, batchEntityMap)
-                        allRelationships.extend(batchRelationshipCollection.values())
+                    for rel_future in as_completed(rel_futures):
+                        batchIdx, numChunks = rel_futures[rel_future]
+                        try:
+                            batchRelationshipCollection = rel_future.result()
+                            allRelationships.extend(batchRelationshipCollection.values())
+                            
+                            relCount = sum(len(rel_list) for rel_list in batchRelationshipCollection.values())
+                            logger.info(f"  Extracted {relCount} relationships from batch {batchIdx+1} ({numChunks} chunks)")
+                        except Exception as exc:
+                            logger.error(f"Relationship extraction failed for batch {batchIdx+1}: {exc}")
             
             # Accumulate all entities from this document into the master list
             for entitiesFromChunk in documentEntityCollection.values():
@@ -607,6 +631,8 @@ class GraphRAGIndexer:
     
     def indexDirectory(self, inputDir: str = None, skipIfExists: bool = True) -> IndexingStats:
         # Index all markdown and text files in a directory with automatic pipeline resume.
+        start_time = time.time()
+        
         inputDir = inputDir or settings.INPUT_DIR
         allFiles = self._discoverFiles(inputDir)
         if not allFiles:
@@ -681,11 +707,13 @@ class GraphRAGIndexer:
         # Ensure HNSW index exists even if Stage 2 was skipped
         self.store.ensureHnswIndex()
 
+        self.stats.timeTaken = time.time() - start_time
         logger.info(f"Indexing complete: {self.stats}")
         return self.stats
     
     def indexFile(self, filePath: str) -> IndexingStats:
         # Index a single file. Returns indexing statistics.
+        start_time = time.time()
         docId = self.indexDocument(filePath)
         
         if docId:
@@ -694,6 +722,7 @@ class GraphRAGIndexer:
             self.indexBM25(chunks)
             self.extractEntities(chunks)
         
+        self.stats.timeTaken = time.time() - start_time
         return self.stats
 
 
@@ -703,8 +732,8 @@ def main():
     import argparse
     
     parser = argparse.ArgumentParser(description="GraphRAG Indexing Pipeline")
-    parser.add_argument("--input", "-i", default=settings.INPUT_DIR,
-                       help="Input directory with markdown files")
+    parser.add_argument("--source", "-s", default=settings.INPUT_DIR,
+                       help="Source folder containing documents")
     parser.add_argument("--file", "-f", help="Single file to index")
     parser.add_argument("--no-entities", action="store_true",
                        help="Skip entity extraction")
@@ -754,7 +783,7 @@ def main():
     if args.file:
         indexer.indexFile(args.file)
     else:
-        indexer.indexDirectory(args.input, skipIfExists=skipIfExists)
+        indexer.indexDirectory(args.source, skipIfExists=skipIfExists)
     
     # Run post-extraction pruning if requested
     if args.prune or args.llm_prune:
@@ -772,6 +801,12 @@ def main():
     print(f"BM25 Terms:    {indexer.stats.bm25TokensIndexed}")
     print(f"Entities:      {indexer.stats.entitiesExtracted}")
     print(f"Relationships: {indexer.stats.relationshipsExtracted}")
+    
+    # Format time
+    elapsed = indexer.stats.timeTaken
+    minutes = int(elapsed // 60)
+    seconds = int(elapsed % 60)
+    print(f"Time Taken:    {minutes}m {seconds}s")
     
     # Show corpus stats
     dbStats = store.getStats()

@@ -27,10 +27,10 @@ Load the shell aliases for the fastest workflow:
 
 ```bash
 # 1. Initialize a database entry
-graphrag start my_project --input /app/documents/source_files
+graphrag start my_project --source /app/documents/source_files
 
 # 2. Run the ingestion pipeline (Indexer Image)
-graphrag index my_project
+graphrag index my_project [--reset] [--prune]
 ```
 
 ### Querying
@@ -94,7 +94,8 @@ Integrate this project as an **MCP Server** in Desktop Agents (Claude Desktop, C
 
 - `graphrag list`: Show all registered databases.
 - `graphrag status <db>`: Check entity/relationship counts and health.
-- `graphrag delete <db>`: Unregister and remove database entries.
+- `graphrag delete <db> [--files]`: Unregister database entry and optionally remove physical files.
+- `graphrag index <db> [--reset]`: Index documents into database (use `--reset` to skip duplicate checks).
 
 ### Managed Storage Workflow
 
