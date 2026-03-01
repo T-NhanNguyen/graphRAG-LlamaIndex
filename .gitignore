@@ -11,9 +11,15 @@ dist/
 .env.*
 !.env.example
 
-# User documents folder (mounted via DOCUMENTS_HOME in .env)
-documents/
+# Local databases and graph data
+.DuckDB/
+index-vault/
+
+# Transitory directories (if recreated locally by user)
+data/
+input/
 output/
+documents/
 
 # Node
 node_modules/
@@ -37,4 +43,3 @@ docs/archive/
 # OS
 .DS_Store
 Thumbs.db
-.DuckDB

@@ -10,7 +10,7 @@
 
 ```mermaid
 graph TB
-    subgraph "📥 INPUT LAYER"
+    subgraph " INPUT LAYER"
         A["Markdown/Text Files"]
     end
 
@@ -22,7 +22,7 @@ graph TB
         F["Relationship Extractor<br/>(LLM Batch Processing)"]
     end
 
-    subgraph "💾 STORAGE LAYER"
+    subgraph " STORAGE LAYER"
         G[("DuckDB<br/>(.duckdb file)")]
         G1["source_documents"]
         G2["documents (chunks)"]
@@ -36,13 +36,13 @@ graph TB
         G --> G5
     end
 
-    subgraph "🔍 QUERY LAYER"
+    subgraph " QUERY LAYER"
         H["Query Engine"]
         I["Hybrid Search<br/>(BM25 + Vector + RRF)"]
         J["Graph Traversal<br/>(Entity context)"]
     end
 
-    subgraph "📤 OUTPUT LAYER"
+    subgraph " OUTPUT LAYER"
         K["JSON/TSON Response"]
         L["MCP Tools<br/>(Agent Integration)"]
     end
@@ -86,8 +86,8 @@ graph TB
 
 **Trade-off**:
 
-- ❌ Not optimized for billion-scale graphs (use Neo4j if you have >10M entities)
-- ✅ Perfect for document collections up to ~100k chunks
+- Not optimized for billion-scale graphs (use Neo4j if you have >10M entities)
+- Perfect for document collections up to ~100k chunks
 
 ---
 

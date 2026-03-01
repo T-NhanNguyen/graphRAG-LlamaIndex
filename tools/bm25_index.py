@@ -1,12 +1,13 @@
 # BM25 Indexing Module - Sparse vector indexing for keyword-based retrieval.
 import re
+import json
 import math
 import logging
 from typing import List, Dict, Tuple
 from collections import Counter
 
-from graphrag_config import settings
-from duckdb_store import DuckDBStore, DocumentChunk
+from core import settings
+from core import DuckDBStore, DocumentChunk
 from stop_words import get_stop_words
 
 logger = logging.getLogger(__name__)
@@ -181,7 +182,6 @@ class BM25Scorer:
         # Score each document
         scored = []
         for chunkId, tfJson, docLength, chunkText in results:
-            import json
             tf = json.loads(tfJson) if isinstance(tfJson, str) else tfJson
             
             score = self.scoreDocument(queryTokens, tf, docLength)

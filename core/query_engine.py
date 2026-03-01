@@ -1,12 +1,17 @@
-# GraphRAG Query Engine - Search interface supporting connection-based and thematic reasoning.
 import logging
+import json
+import argparse
+import numpy as np
 from typing import List, Dict, Optional, Any
 from dataclasses import dataclass, asdict
 
-from graphrag_config import settings, SearchType
-from duckdb_store import DuckDBStore, Entity, Relationship, getStore
-from fusion_retrieval import FusionRetriever, RetrievalResult, getFusionRetriever
-from embedding_provider import getEmbeddings
+# Package internal imports
+from .graphrag_config import settings, SearchType
+from .duckdb_store import DuckDBStore, Entity, Relationship, getStore
+from .embedding_provider import getEmbeddings
+
+# Third-party tool imports
+from tools import FusionRetriever, RetrievalResult, getFusionRetriever, convertToTSON
 
 logger = logging.getLogger(__name__)
 
@@ -118,7 +123,6 @@ class GraphRAGQueryEngine:
     
     def _cosineSimilarity(self, vec1: List[float], vec2: List[float]) -> float:
         # Calculate cosine similarity between two vectors.
-        import numpy as np
         v1 = np.array(vec1)
         v2 = np.array(vec2)
         return np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
@@ -306,8 +310,6 @@ class GraphRAGQueryEngine:
 
 def main():
     # CLI entry point for queries.
-    import argparse
-    import json
     
     parser = argparse.ArgumentParser(description="GraphRAG Query Engine")
     parser.add_argument("query", nargs="?", help="Query string")
@@ -335,7 +337,6 @@ def main():
         if args.json or args.agent_tson:
             outputData = result
             if args.agent_tson:
-                from json_to_tson import convertToTSON
                 outputData["entities"] = convertToTSON(outputData["entities"])
                 outputData["relationships"] = convertToTSON(outputData["relationships"])
             print(json.dumps(outputData, indent=2))
@@ -389,7 +390,6 @@ def main():
                     outputData["metadata"]["extendedRelationshipCount"] = len(outputData["evidence"].get("extendedRelationships", []))
             
             if args.agent_tson:
-                from json_to_tson import convertToTSON
                 # Convert the evidence lists
                 if outputData.get("evidence") is not None:
                     for key in ["directRelationships", "extendedRelationships"]:

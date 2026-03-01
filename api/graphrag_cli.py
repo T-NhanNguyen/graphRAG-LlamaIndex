@@ -24,10 +24,18 @@ import logging
 from typing import Optional, Dict, Any
 
 # Ensure project root is in path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from workspace_config import getRegistry, DEFAULT_DATABASE_NAME
-from graphrag_config import GraphRAGSettings, SearchType
+from core import (
+    getRegistry, 
+    DEFAULT_DATABASE_NAME, 
+    GraphRAGSettings, 
+    SearchType, 
+    getSettingsForDatabase, 
+    getStore, 
+    GraphRAGIndexer, 
+    GraphRAGQueryEngine
+)
 
 # Configure logging
 logging.basicConfig(
@@ -78,9 +86,6 @@ class GraphRAGService:
         reset: bool = False
     ) -> Dict[str, Any]:
         # Index documents into the database and return statistics.
-        from graphrag_config import getSettingsForDatabase
-        from duckdb_store import getStore
-        from indexer import GraphRAGIndexer
         
         settings = getSettingsForDatabase(dbName)
         store = getStore(settings.DUCKDB_PATH)
@@ -123,9 +128,6 @@ class GraphRAGService:
         topK: int = 10
     ) -> Dict[str, Any]:
         # Execute a search query and return results.
-        from graphrag_config import getSettingsForDatabase
-        from duckdb_store import getStore
-        from query_engine import GraphRAGQueryEngine
         
         # Map CLI search types to internal enum
         typeMap = {

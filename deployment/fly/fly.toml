@@ -1,0 +1,19 @@
+app = "graphrag-query"
+primary_region = "sjc"
+
+[build]
+  dockerfile = "Dockerfile.query"
+
+[env]
+  PORT = "8000"
+  TRANSPORT = "sse"
+  GRAPHRAG_DATABASE = "investment-analysis"
+  LLM_MODEL = "arcee-ai/trinity-large-preview:free"
+  RELATIONSHIP_PROVIDER = "openrouter"
+  # S3_BUCKET_NAME intentionally left blank since the DB is bundled
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true

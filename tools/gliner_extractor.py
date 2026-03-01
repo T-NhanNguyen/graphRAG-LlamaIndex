@@ -5,9 +5,9 @@ import warnings
 from typing import List, Dict, Any
 
 from gliner import GLiNER
-from entity_extractor import BaseEntityExtractor
-from graphrag_config import settings, EntityType
-from duckdb_store import Entity, DocumentChunk
+from .entity_extractor import BaseEntityExtractor
+from core import settings, EntityType
+from core import Entity, DocumentChunk
 
 logger = logging.getLogger(__name__)
 

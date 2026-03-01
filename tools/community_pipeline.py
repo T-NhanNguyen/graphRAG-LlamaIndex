@@ -1,9 +1,9 @@
 import logging
 import networkx as nx
 from typing import List, Dict, Any, Tuple
-from duckdb_store import getStore, DuckDBStore, Entity, CommunitySummary
-from llm_client import getLLMClient
-from graphrag_config import settings
+from core import getStore, DuckDBStore, Entity, CommunitySummary
+from core import getLLMClient
+from core import settings
 import graspologic.partition as partition
 import pandas as pd
 

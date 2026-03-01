@@ -8,8 +8,8 @@ from dataclasses import dataclass, asdict
 
 import httpx
 
-from graphrag_config import settings, EntityType, RelationshipProvider
-from duckdb_store import Entity, Relationship
+from core import settings, EntityType, RelationshipProvider
+from core import Entity, Relationship
 
 from openai import OpenAI
 

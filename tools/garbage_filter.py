@@ -5,7 +5,7 @@ import logging
 import re
 from collections import Counter
 from typing import List, Dict, Any, Optional
-from graphrag_config import settings
+from core import settings
 
 logger = logging.getLogger(__name__)
 

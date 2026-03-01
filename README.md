@@ -1,253 +1,114 @@
 # GraphRAG LlamaIndex
 
-A decoupled GraphRAG implementation optimized for local indexing and lightweight cloud querying.
+Full-stack GraphRAG engine optimized for local indexing and lightweight cloud querying. Built on DuckDB, LlamaIndex, and the Model Context Protocol (MCP).
 
-## Two-Image Architecture
+## 1. Context
 
-This project is split into two specialized Docker environments to optimize build times and deployment footprint:
+This project implements a **Decoupled Architecture**:
 
-1.  **`graphrag-indexer` (Image A)**:
-    - **Purpose**: Local-only heavy processing (indexing, embedding, graph building).
-    - **Contains**: PyTorch, GLiNER, Graspologic, and all ML dependencies.
-2.  **`graphrag-query` (Image B)**:
-    - **Purpose**: Lightweight cloud-ready query engine (~1-2GB).
-    - **Contains**: DuckDB, MCP server, and search retrieval. **NO PyTorch/ML overhead**.
+- **Indexer (Image A)**: Heavy-duty ML environment (PyTorch, GLiNER) for local graph construction.
+- **Query (Image B)**: Lightweight API environment (Node.js, DuckDB) for fast cloud deployment (~1GB footprint).
 
-## Setup
-
-### 1. Clone the repo
-
-`git clone https://github.com/T-NhanNguyen/graphRAG-LlamaIndex.git`
-
-### 2. Copy .env.example to .env
-
-`cp .env.example .env`
-
-### 3. Build the Images
+## 2. Building the Images
 
 ```bash
-# Build both images
+# Build specialized images via Docker Compose
 docker compose build
-
-# Or build individually
-docker build -t graphrag-indexer -f Dockerfile.indexer .
-docker build -t graphrag-query -f Dockerfile.query .
 ```
 
-### 4. Edit .env and set your data directory
+## 3. Running Indexer & Query
 
-> GRAPHRAG_DATA_DIR=/path/to/your/documents
+Load the shell aliases for the fastest workflow:
 
-(You can copy and paste the windows address directly)
+- **PowerShell**: `. .\.graphrag-alias.ps1`
+- **WSL/Bash**: `source .graphrag-alias.sh`
 
-### 4. Shell Alias Setup (Optional but Recommended for ease of use)
-
-To simplify command usage, load the appropriate alias file for your shell:
-
-1. Edit the `graphrag-alias.sh` and `graphrag-alias.ps1` to replace the placeholder path
-   with your correct path to this repo
-2. Copy the alias over to the bottom of your bashrc and $PROFILE
-3. source `.graphrag-alias.sh` in your linux wsl, and `.graphrag-alias.ps1` in your powershell
-
-**For WSL/Bash:**
+### Indexing Documents
 
 ```bash
-# Append the source command to the end of .bashrc
-# (Replace the path with your actual WSL project path)
-echo "source /graphRAG-LlamaIndex/.graphrag-alias.sh" >> ~/.bashrc
-# Source it
-source ~/.bashrc
+# 1. Initialize a database entry
+graphrag start my_project --input /app/documents/source_files
+
+# 2. Run the ingestion pipeline (Indexer Image)
+graphrag index my_project
 ```
 
-**For PowerShell:**
-
-```powershell
-# 1. Create the profile file (and its folder if missing)
-New-Item -Path $PROFILE -Type File -Force
-# 2. Open it for editing
-code $PROFILE
-# 3. copy the alias to the bottom of your $PROFILE
-. "E:\ai-workspace\projects\graphRAG-LlamaIndex\.graphrag-alias.ps1"
-# 4. Restart terminal
-```
-
-Else run `. E:\ai-workspace\projects\graphRAG-LlamaIndex\.graphrag-alias.ps1`
-
-This enables you to use `graphrag <command>` instead of the full `docker compose run --rm graphrag python graphrag_cli.py <command>`. Because you need this repo around to use it, doing it like this is easier to manage.
-
-**Important Note for WSL Users:**
-
-- The alias automatically sets `GRAPHRAG_REGISTRY_DIR` to your Windows user profile's .graphrag folder.
-- This ensures WSL uses the same registry as PowerShell (your Windows user profile)
-- Without this, WSL would create a separate registry in `/home/<username>/.graphrag`, causing a "split-brain" issue
-
-### 5. Create a database
-
-```
-docker compose run --rm graphrag python graphrag_cli.py start my-docs \
- --input /app/data/<subfolder>
-```
-
-Your .env settings `GRAPHRAG_DATA_DIR=E:/ai-workspace/analysis-docs` maps to docker as `/app/data`,
-so you Just replace SUBFOLDER with whatever folder exists in your analysis-docs directory!
-
-```
-E:/ai-workspace/analysis-docs/
-├── converted_md/
-│   └── Documents/          ← Your investment docs
-├── research-papers/        ← Another collection
-└── quarterly-reports/      ← Another collection
-
-# Investment analysis (your current one)
-docker compose run --rm graphrag python graphrag_cli.py start investment-analysis `
-  --input /app/data/converted_md/Documents
-
-# Research papers
-docker compose run --rm graphrag python graphrag_cli.py start research `
-  --input /app/data/research-papers
-
-# Quarterly reports
-docker compose run --rm graphrag python graphrag_cli.py start quarterly `
-  --input /app/data/quarterly-reports
-```
-
-### 5.5 Moving database
-
-**Adding an entry to ~/.graphrag/registry.json and pointing to your existing file**:
-
-```
-docker compose run --rm graphrag python graphrag_cli.py register my-database \
-  --db-path /app/.DuckDB/graphrag.duckdb \
-  --input /app/data/<located-in-another-subfolder>
-```
-
-- Immediate Access: You can now run status, search, or index using that name (e.g., graphrag search my-database "...").
-- No Data Loss: It doesn't move or modify your actual .duckdb file; it just "bookmarks" it for the CLI.
+### Querying
 
 ```bash
-# Register a folder as a database
-graphrag start my-database --source /app/input
+# CLI Search (Query Image)
+graphrag search my_project "What are the common themes?"
 
-# Index (Uses graphrag-indexer image)
-graphrag index my-database
-
-# Search (Uses graphrag-query image)
-graphrag search my-database "How does Bloom Energy work?"
-graphrag list
+# Start MCP Server for Agents
+docker compose up query
 ```
 
-Guide for Window Users:
+## 4. Deployment Folder
 
-- Opening the folder in File Expolorer:
-  `explorer $env:USERPROFILE\.graphrag`
-- View the registry file:
-  `cat $env:USERPROFILE\.graphrag\registry.json`
-- See all registered databases:
-  `ls $env:USERPROFILE\.graphrag\databases`
+- `deployment/fly/`: Scripts for zero-latency hosting on Fly.io (optimized for free-tier fly-machines).
+- `deployment/aws/`: Infrastructure scripts for ECR, S3 backups, and App Runner deployments.
 
-### If you want to physically move it to the new "Managed" folder:
+## 5. Setup & Configuration
 
-- Create a folder for your database in your defined `GRAPHRAG_DATA_DIR`
-- Move the .duckdb file into that folder and rename it to match
-- Register it:
+### Environment (.env)
 
-```
-docker compose run --rm graphrag python graphrag_cli.py register my-project \
-  --db-path /app/data/my-project/my-project.duckdb
-```
+Copy `.env.example` and set:
 
-This design should be portable. it uses Path.home() in `workspace_config.py` to automatically resolves to:
+- `OPENAI_API_KEY`: For LLM reasoning and extraction.
+- `DOCUMENTS_HOME`: Absolute path to your local data folder (mapped to `/app/documents` in Docker).
 
-- C:\Users\<username> on Windows
-- /home/<username> on Linux
-- /Users/<username> on macOS
+### Engine Configuration (core/graphrag_config.py)
 
-## Parent Directory & Design Limitations
+Tweak these parameters to refine performance:
 
-Because this is designed with docker container for portability, the current setup with a single hardcoded mount `/app/input` means all databases share the same input directory. So my advice is to make a folder somewhere on your PC and organize multiple different topics and interests input folder within.
+- **`SearchType`**: Switch between `entity_connections` (graph-heavy) or `thematic_overview` (summary-heavy).
+- **`ExtractionMode`**: Choose `llm` (creative) or `gliner` (fast/cost-effective).
 
-If you need complete flexibility without predefined slots, look into creating a docker-compose.override to establish a multi drive support.
+## 6. Local Integration & Testing
 
-## Command Cheat-sheet
+Integrate this project as an **MCP Server** in Desktop Agents (Claude Desktop, Cursor, etc.) to give them memory of your documents.
 
-```
-graphrag start <db> [--source <path>]    # Create database/update a database's source folder
-graphrag index <db> [--prune]            # Index documents
-graphrag search <db> <query> [--type]    # Query knowledge graph
-graphrag list                            # List all databases
-graphrag status <db>                     # Show stats
-graphrag delete <db>                     # Remove database
-graphrag register <db> --db-path /root/.graphrag/<index-vault>/<path>  # Import existing .duckdb.
-# If the host folder is C:\Users\name\.graphrag
-# you're replacing that section with /root/.graphrag.
-```
-
-## S3 Database Backup (Git-like push)
-
-You can push your local knowledge graph databases to an S3 bucket for cloud backup.
-
-1.  **Configure S3** in your `.env`:
-    - `S3_BUCKET_NAME`: Your bucket name.
-    - `S3_DB_VAULT_DIR`: Path to your `.graphrag/index-vault` folder.
-2.  **Initialize Aliases**:
-    - `. .\.graphrag-alias.ps1` (PowerShell)
-3.  **Push to Cloud**:
-    - `graphrag-push`: Backup the active database to S3.
-    - `graphrag-push <db-name>`: Backup a specific database.
-
-## Troubleshooting
-
-### WSL Search Returns No Results (PowerShell Works)
-
-**Symptom**: Running the same search command in WSL returns empty results, but PowerShell returns data.
-
-**Cause**: Docker Compose resolves `~` differently in each environment:
-
-- PowerShell: `~` → `C:\Users\<username>` ✓
-- WSL: `~` → `/home/<username>` (wrong location)
-
-**Solution**: Use the provided alias files which automatically set the correct registry path, or manually export:
-
-```bash
-export GRAPHRAG_REGISTRY_DIR=/mnt/c/Users/<your-windows-username>/.graphrag
-```
-
-### MCP Config Path Format Error
-
-**Symptom**: The MCP server fails to initialize with an error like:
-
-```
-Error: docker: open /mnt/e/.../.env: The system cannot find the path specified.
-```
-
-**Cause**: Your `mcp_config.json` uses WSL-style paths (`/mnt/e/...`) but Docker Desktop for Windows requires Windows-style paths (`E:/...`). This happens when your AI agent runs from a different environment than where the MCP server executes.
-
-| Environment | Path Format      | Example                    |
-| ----------- | ---------------- | -------------------------- |
-| WSL/Linux   | `/mnt/e/project` | Used by Gemini CLI in WSL  |
-| Windows     | `E:/project`     | Required by Docker Desktop |
-
-**Solution**: Use the lightweight `graphrag-query` image and ensure Windows-style paths (e.g., `E:/...` instead of `/mnt/e/...`) in your `mcp_config.json`:
+**Add to your MCP Config:**
 
 ```json
 {
   "mcpServers": {
-  "graphrag": {
-    "command": "docker",
-    "args": [
-      "run",
-      "-i",
-      "--rm",
-      "graphrag-query",
-      "-v",
-      "E:/ai-workspace/projects/graphRAG-LlamaIndex:/app",
-      "-v",
-      "C:/Users/nhan/.graphrag:/root/.graphrag",
-      "--env-file",
-      "E:/ai-workspace/projects/graphRAG-LlamaIndex/.env"
-    ]
+    "graphrag": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "-v",
+        "C:/Users/<USER>/.graphrag:/root/.graphrag",
+        "graphrag-query"
+      ]
+    }
   }
 }
 ```
 
-Also ensure the registry directory is mounted (`C:/Users/nhan/.graphrag:/root/.graphrag`) so the container can find your databases.
+## 7. Database Cheatsheet
+
+### Core Commands
+
+- `graphrag list`: Show all registered databases.
+- `graphrag status <db>`: Check entity/relationship counts and health.
+- `graphrag delete <db>`: Unregister and remove database entries.
+
+### Managed Storage Workflow
+
+To keep your project portable, move database files into a `Managed/` folder inside your data directory.
+
+**Manual Move:**
+
+1. Move `your_db.duckdb` to `[DOCUMENTS_HOME]/Managed/`.
+2. Re-register the path:
+
+```bash
+graphrag register my_db --db-path /app/documents/Managed/your_db.duckdb
+```
+
+---
+
+_For S3 management see [S3_CHEATSHEET.md](deployment/aws/S3_CHEATSHEET.md)._

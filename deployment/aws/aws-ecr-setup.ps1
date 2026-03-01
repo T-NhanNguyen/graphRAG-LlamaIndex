@@ -1,8 +1,8 @@
 param(
-    [Parameter(Position=0, Mandatory=$false)]
+    [Parameter(Position = 0, Mandatory = $false)]
     [string]$RepoName = "graphrag-query",
     
-    [Parameter(Position=1, Mandatory=$false)]
+    [Parameter(Position = 1, Mandatory = $false)]
     [string]$Region = "us-west-1"
 )
 
@@ -15,10 +15,11 @@ if ($repo -eq $null) {
     Write-Host "Repository not found. Creating..." -ForegroundColor Yellow
     $newRepo = aws ecr create-repository --repository-name $RepoName --region $Region | ConvertFrom-Json
     $uri = $newRepo.repository.repositoryUri
-    Write-Host "✅ Created: $uri" -ForegroundColor Green
-} else {
+    Write-Host " Created: $uri" -ForegroundColor Green
+}
+else {
     $uri = $repo.repositories[0].repositoryUri
-    Write-Host "✅ Repository already exists at: $uri" -ForegroundColor Green
+    Write-Host " Repository already exists at: $uri" -ForegroundColor Green
 }
 
 # Save URIs to .env for other scripts to use

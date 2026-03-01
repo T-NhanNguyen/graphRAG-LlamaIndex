@@ -20,7 +20,7 @@ For a deep dive into the system concepts and architecture, please refer to the [
 ### Key Features
 
 - **🦆 Unified Storage**: All data including documents, chunks, entities, relationships, vectors, and stats, resides in a single, portable `DuckDB` file.
-- **🔍 Hybrid Method of Popular Retrieval Design**: Combines **BM25** (keyword relevance) with **Vector Search** (semantic similarity) using **Reciprocal Rank Fusion (RRF)** for superior recall.
+- ** Hybrid Method of Popular Retrieval Design**: Combines **BM25** (keyword relevance) with **Vector Search** (semantic similarity) using **Reciprocal Rank Fusion (RRF)** for superior recall.
 - **🛡️ Robust Indexing Pipeline**:
   - **Auto-Resume**: Tracks state at the document level (`chunked` -> `embedded` -> `extracted`). If interrupted, it resumes exactly where it left off.
   - **Pruning & Garbage Filtering**: A multi-stage design to ensure high-quality data:

@@ -13,13 +13,15 @@ from typing import List, Optional, Dict, Any
 from dataclasses import dataclass
 from pathlib import Path
 
-from graphrag_config import settings
-from duckdb_store import DuckDBStore, SourceDocument, DocumentChunk, Entity, Relationship, getStore, PipelineStatus
-from bm25_index import BM25Indexer
-from embedding_provider import DockerModelRunnerEmbeddings, getEmbeddings
-from llm_client import LocalLLMClient, getLLMClient, getRelationshipClient
-from entity_extractor import BaseEntityExtractor, ExtractorFactory
-from garbage_filter import garbageFilter, garbageLogger
+# Package internal imports
+from . import settings
+from .graphrag_config import ExtractionMode
+from .duckdb_store import DuckDBStore, SourceDocument, DocumentChunk, Entity, Relationship, getStore, PipelineStatus
+from .embedding_provider import DockerModelRunnerEmbeddings, getEmbeddings
+from .llm_client import LocalLLMClient, getLLMClient, getRelationshipClient
+
+# Third-party tool imports
+from tools import BM25Indexer, BaseEntityExtractor, ExtractorFactory, garbageFilter, garbageLogger
 
 logger = logging.getLogger(__name__)
 
@@ -726,12 +728,10 @@ def main():
     # Create indexer
     extraction_mode = None
     if args.extraction_mode:
-        from graphrag_config import ExtractionMode
         extraction_mode = ExtractionMode(args.extraction_mode)
         
     entity_extractor = None
     if extraction_mode:
-        from entity_extractor import ExtractorFactory
         entity_extractor = ExtractorFactory.getExtractor(mode=extraction_mode)
         
     indexer = GraphRAGIndexer(

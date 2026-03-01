@@ -1,6 +1,3 @@
-# GraphRAG MCP Router - Model Context Protocol command interface.
-# Routes agent commands to search, graph traversal, and stats functions.
-
 import os
 import sys
 import warnings
@@ -13,6 +10,12 @@ import logging
 from typing import Any, Dict, List, Optional
 from dataclasses import asdict
 
+# Ensure project root is in path for imports
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from tools import convertToTSON
+from core import GraphRAGQueryEngine, QueryResult, getStore, getSettingsForDatabase
+
 # Configure logging to hide noisy INFO/WARNING from stdout (which breaks MCP)
 # Redirecting to stderr ensures logs are still visible in Docker/Process logs
 logging.basicConfig(
@@ -24,11 +27,6 @@ logger = logging.getLogger(__name__)
 # Explicitly silence some common noisy libraries
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("duckdb").setLevel(logging.WARNING)
-
-import json_to_tson
-from query_engine import GraphRAGQueryEngine, QueryResult
-from duckdb_store import getStore
-from graphrag_config import getSettingsForDatabase
 
 # --- Constants ---
 DEFAULT_TOP_K = 10
@@ -74,7 +72,7 @@ def _preprocessData(data: Any) -> Any:
         processedList = [res for item in data if (res := _preprocessData(item)) is not None]
         # Apply TSON compression if enabled and applicable
         if TOGGLE_TSON_OUTPUT:
-            return json_to_tson.convertToTSON(processedList)
+            return convertToTSON(processedList)
         return processedList
     
     if isinstance(data, (int, float, str, bool)):

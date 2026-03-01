@@ -3,8 +3,8 @@ from abc import ABC, abstractmethod
 from typing import List, Dict, Optional
 from dataclasses import dataclass
 
-from graphrag_config import settings, ExtractionMode
-from duckdb_store import Entity, DocumentChunk
+from core import settings, ExtractionMode
+from core import Entity, DocumentChunk, getLLMClient
 
 logger = logging.getLogger(__name__)
 
@@ -40,11 +40,12 @@ class ExtractorFactory:
         extractionMode = mode or settings.ENTITY_EXTRACTION_MODE
         
         if extractionMode == ExtractionMode.HYBRID:
-            from gliner_extractor import GLiNEREntityExtractor
+            # Lazy import: guards the heavy `gliner` library from loading in the
+            # query image, which doesn't install GLiNER. Do NOT move to header.
+            from .gliner_extractor import GLiNEREntityExtractor
             return GLiNEREntityExtractor()
         else:
             # Default to LLM_ONLY
             if llmClient is None:
-                from llm_client import getLLMClient
                 llmClient = getLLMClient()
             return LLMEntityExtractor(llmClient)

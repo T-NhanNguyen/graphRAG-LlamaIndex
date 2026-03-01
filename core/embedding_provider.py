@@ -6,7 +6,7 @@ from typing import List, Optional
 import httpx
 import numpy as np
 
-from graphrag_config import settings
+from core import settings
 
 logger = logging.getLogger(__name__)
 
