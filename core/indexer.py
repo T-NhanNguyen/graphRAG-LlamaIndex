@@ -6,6 +6,7 @@ import logging
 import glob
 import json
 import re
+import asyncio
 import argparse
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -400,52 +401,59 @@ class GraphRAGIndexer:
             # Split document chunks into batches
             batches = [docChunks[i:i + batchSize] for i in range(0, len(docChunks), batchSize)]
             
-            # 1. Extract Entities (Parallel across batches)
-            # Uses the configured entity extractor (LLM or GLiNER)
-            documentEntityCollection = {} 
-            with ThreadPoolExecutor(max_workers=concurrency) as executor:
-                future_to_batch = {
-                    executor.submit(self.entityExtractor.extractEntitiesBatch, batch): batch
-                    for batch in batches
-                }
-                
-                for future in as_completed(future_to_batch):
-                    batch = future_to_batch[future]
-                    try:
-                        batchExtractedEntities = future.result()
-                        documentEntityCollection.update(batchExtractedEntities)
-                        
-                        entityCount = sum(len(extractedEntities) for extractedEntities in batchExtractedEntities.values())
-                        logger.info(f"  Extracted {entityCount} entities from {len(batch)} chunks")
-                    except Exception as exc:
-                        logger.error(f"Entity extraction failed for batch: {exc}")
+            # --- Unified Async Batch Pipeline ---
+            # Each batch coroutine: extract entities THEN extract relationships
+            # immediately using those entities. Concurrency is bounded by semaphore.
+            documentEntityCollection = {}
 
-            # 2. Extract Relationships (LLM only - Batch discovery)
-            if documentEntityCollection:
-                with ThreadPoolExecutor(max_workers=concurrency) as rel_executor:
-                    rel_futures = {}
-                    for batchIdx, batch in enumerate(batches):
-                        # Build batch-local entity map (only entities from chunks in THIS batch)
-                        batchChunkIds = {c.chunkId for c in batch}
-                        batchEntityMap = {
-                            cid: entities 
-                            for cid, entities in documentEntityCollection.items() 
-                            if cid in batchChunkIds
-                        }
-                        
-                        if batchEntityMap:
-                            rel_futures[rel_executor.submit(self.relationshipClient.extractRelationshipsBatch, batch, batchEntityMap)] = (batchIdx, len(batch))
-                    
-                    for rel_future in as_completed(rel_futures):
-                        batchIdx, numChunks = rel_futures[rel_future]
-                        try:
-                            batchRelationshipCollection = rel_future.result()
-                            allRelationships.extend(batchRelationshipCollection.values())
-                            
-                            relCount = sum(len(rel_list) for rel_list in batchRelationshipCollection.values())
-                            logger.info(f"  Extracted {relCount} relationships from batch {batchIdx+1} ({numChunks} chunks)")
-                        except Exception as exc:
-                            logger.error(f"Relationship extraction failed for batch {batchIdx+1}: {exc}")
+            async def _processBatchAsync(
+                batch: List[DocumentChunk],
+                semaphore: asyncio.Semaphore
+            ):
+                async with semaphore:
+                    # Step 1: entity extraction
+                    batchEntityMap = await self.entityExtractor.extractEntitiesBatchAsync(batch)
+
+                    # Step 2: relationship extraction using local entities
+                    batchChunkIds = {c.chunkId for c in batch}
+                    batchEntityMapFiltered = {
+                        cid: ents
+                        for cid, ents in batchEntityMap.items()
+                        if cid in batchChunkIds and ents
+                    }
+
+                    if batchEntityMapFiltered:
+                        batchRelMap = await self.relationshipClient.extractRelationshipsBatchAsync(
+                            batch, batchEntityMapFiltered
+                        )
+                    else:
+                        batchRelMap = {}
+
+                    return batchEntityMap, batchRelMap
+
+            async def _runAllBatchesAsync():
+                semaphore = asyncio.Semaphore(concurrency)
+                tasks = [_processBatchAsync(batch, semaphore) for batch in batches]
+                return await asyncio.gather(*tasks, return_exceptions=True)
+
+            batchResults = asyncio.run(_runAllBatchesAsync())
+
+            for result in batchResults:
+                if isinstance(result, Exception):
+                    logger.error(f"Batch extraction failed: {result}")
+                    continue
+                batchEntityMap, batchRelMap = result
+
+                # Accumulate entities
+                documentEntityCollection.update(batchEntityMap)
+
+                # Accumulate relationships
+                allRelationships.extend(batchRelMap.values())
+
+                entityCount = sum(len(e) for e in batchEntityMap.values())
+                relCount = sum(len(r) for r in batchRelMap.values())
+                logger.info(f"  Batch done: {entityCount} entities, {relCount} relationships")
+
             
             # Accumulate all entities from this document into the master list
             for entitiesFromChunk in documentEntityCollection.values():
@@ -814,10 +822,7 @@ def main():
     for table, count in dbStats.items():
         print(f"{table}: {count}")
     
-    elapsed = time.time() - start_time
-    minutes = int(elapsed // 60)
-    seconds = int(elapsed % 60)
-    print(f"\nTotal time elapsed: {minutes}m {seconds}s")
+    # Time calculation moved to CLI
 
 
 if __name__ == "__main__":

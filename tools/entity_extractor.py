@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from abc import ABC, abstractmethod
 from typing import List, Dict, Optional
@@ -20,6 +21,11 @@ class BaseEntityExtractor(ABC):
         # Extract entities from a batch of chunks for efficiency
         pass
 
+    @abstractmethod
+    async def extractEntitiesBatchAsync(self, chunks: List[DocumentChunk]) -> Dict[str, List[Entity]]:
+        # Async version of extractEntitiesBatch for use in asyncio pipelines.
+        pass
+
 class LLMEntityExtractor(BaseEntityExtractor):
     # Adapter for existing LLM-based entity extraction.
     # Wraps LocalLLMClient to adhere to the BaseEntityExtractor interface
@@ -32,6 +38,9 @@ class LLMEntityExtractor(BaseEntityExtractor):
 
     def extractEntitiesBatch(self, chunks: List[DocumentChunk]) -> Dict[str, List[Entity]]:
         return self.llmClient.extractEntitiesBatch(chunks)
+
+    async def extractEntitiesBatchAsync(self, chunks: List[DocumentChunk]) -> Dict[str, List[Entity]]:
+        return await self.llmClient.extractEntitiesBatchAsync(chunks)
 
 class ExtractorFactory:
     # To instantiate the appropriate entity extractor based on configuration

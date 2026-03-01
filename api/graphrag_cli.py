@@ -22,6 +22,7 @@ import sys
 import os
 import argparse
 import logging
+import time
 from typing import Optional, Dict, Any
 
 # Ensure project root is in path
@@ -512,6 +513,7 @@ def _cmdRegister(args, service: GraphRAGService) -> int:
 
 def main():
     # Main CLI entry point.
+    start_time = time.time()
     parser = argparse.ArgumentParser(
         prog='graphrag',
         description='GraphRAG - Knowledge Graph Management CLI',
@@ -575,7 +577,14 @@ def main():
         return 0
     
     service = GraphRAGService()
-    return args.func(args, service)
+    exit_code = args.func(args, service)
+    
+    elapsed = time.time() - start_time
+    minutes = int(elapsed // 60)
+    seconds = int(elapsed % 60)
+    print(f"\nTotal time elapsed: {minutes}m {seconds}s")
+    
+    return exit_code
 
 
 if __name__ == "__main__":

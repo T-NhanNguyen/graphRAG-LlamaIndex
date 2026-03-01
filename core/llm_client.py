@@ -11,7 +11,7 @@ import httpx
 from core import settings, EntityType, RelationshipProvider
 from core import Entity, Relationship
 
-from openai import OpenAI
+from openai import OpenAI, AsyncOpenAI
 
 logger = logging.getLogger(__name__)
 
@@ -502,6 +502,190 @@ class LocalLLMClient:
         
         return results
     
+    # ------------------------------------------------------------------
+    # Async API
+    # ------------------------------------------------------------------
+
+    async def _callLLMAsync(self, prompt: str, taskDescription: str = "LLM request") -> Tuple[str, Optional[str]]:
+        # Async version of _callLLM using httpx.AsyncClient.
+        endpoint = f"{self.baseUrl}/v1/chat/completions"
+        payload = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": settings.LLM_SYSTEM_PROMPT},
+                {"role": "user", "content": prompt}
+            ],
+            "temperature": self.temperature,
+            "max_tokens": self.maxTokens,
+            "num_ctx": settings.LLM_CONTEXT_LENGTH
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=600.0) as client:
+                response = await client.post(endpoint, json=payload)
+                response.raise_for_status()
+                data = response.json()
+                content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                return content, None
+        except httpx.TimeoutException:
+            error = f"Async LLM request timed out after 600s"
+            logger.error(f"Error: {error}. Prompt snippet: {prompt[:500]}...")
+            return "", error
+        except httpx.HTTPStatusError as exc:
+            error = f"Async LLM API error: {exc.response.status_code}: {exc.response.text}"
+            logger.error(f"Error: {error}. Prompt snippet: {prompt[:500]}...")
+            return "", error
+        except httpx.ConnectError:
+            error = f"Cannot connect to async LLM at {self.baseUrl}"
+            logger.error(f"Error: {error}. Prompt snippet: {prompt[:500]}...")
+            return "", error
+        except Exception as exc:
+            error = f"Async LLM request failed: {exc}"
+            logger.error(f"[ERROR] {error}. Prompt snippet: {prompt[:500]}...")
+            return "", error
+
+    async def extractEntitiesBatchAsync(self, chunks: List) -> Dict[str, List[Entity]]:
+        # Async version of extractEntitiesBatch — same logic, uses _callLLMAsync.
+        if not chunks:
+            return {}
+
+        chunkBlocks = [
+            f"===CHUNK_{idx}===\n{chunk.text[:3000]}\n===END_CHUNK_{idx}==="
+            for idx, chunk in enumerate(chunks)
+        ]
+        prompt = settings.BATCH_ENTITY_EXTRACTION_PROMPT.format(
+            num_chunks=len(chunks),
+            chunk_blocks="\n\n".join(chunkBlocks),
+            max_entities=self.maxEntities
+        )
+
+        chunkIds = [c.chunkId for c in chunks]
+        response, error = await self._callLLMAsync(prompt, taskDescription=f"async batch entity extraction ({len(chunks)} chunks)")
+
+        if error:
+            logger.warning(f"Async batch entity extraction failed: {error}")
+            return {cid: [] for cid in chunkIds}
+
+        parsed = self._parseJson(response)
+        if not parsed:
+            snippet = response[:500].replace('\n', ' ')
+            logger.warning(f"Failed to parse async batch entity response. Snippet: {snippet}...")
+            return {cid: [] for cid in chunkIds}
+
+        results = {}
+        for idx, chunk in enumerate(chunks):
+            chunkData = parsed.get(str(idx), {})
+            rawEntities = chunkData.get("entities", []) if isinstance(chunkData, dict) else []
+
+            entities = []
+            for e in rawEntities:
+                try:
+                    entityType = e.get("type", "CONCEPT").upper()
+                    if entityType not in [t.value for t in EntityType]:
+                        entityType = "CONCEPT"
+                    name = e.get("name", "Unknown")
+                    entity = Entity(
+                        entityId=str(uuid.uuid4()),
+                        name=name,
+                        canonicalName=name,
+                        entityType=EntityType(entityType),
+                        description=e.get("description", ""),
+                        sourceDocumentIds=[chunk.sourceDocumentId] if chunk.sourceDocumentId else [],
+                        sourceChunkIds=[chunk.chunkId]
+                    )
+                    entities.append(entity)
+                except Exception as exc:
+                    logger.warning(f"Error creating entity in async batch: {exc}")
+                    continue
+            results[chunk.chunkId] = entities
+
+        totalEntities = sum(len(e) for e in results.values())
+        logger.info(f"Async batch extracted {totalEntities} entities from {len(chunks)} chunks")
+        return results
+
+    async def extractRelationshipsBatchAsync(self, chunks: List, entityMap: Dict[str, List[Entity]]) -> Dict[str, List[Relationship]]:
+        # Async version of extractRelationshipsBatch — same logic, uses _callLLMAsync.
+        if not chunks:
+            return {}
+
+        allEntityNamesSet: set = set()
+        allEntities: List[Entity] = []
+        for entities in entityMap.values():
+            for e in entities:
+                allEntityNamesSet.add(e.name)
+                allEntities.append(e)
+
+        allEntityNames = ", ".join(sorted(allEntityNamesSet))
+        entityLookup = {e.name.lower(): e for e in allEntities}
+
+        chunkBlocks = [
+            f"===CHUNK_{idx}===\nEntities present in document section: {allEntityNames}\nText: {chunk.text[:3000]}\n===END_CHUNK_{idx}==="
+            for idx, chunk in enumerate(chunks)
+        ]
+        prompt = settings.BATCH_RELATIONSHIP_EXTRACTION_PROMPT.format(
+            num_chunks=len(chunks),
+            chunk_blocks="\n\n".join(chunkBlocks),
+            max_relationships=self.maxRelationships
+        )
+
+        chunkIds = [c.chunkId for c in chunks]
+        response, error = await self._callLLMAsync(prompt, taskDescription=f"async batch relationship extraction ({len(chunks)} chunks)")
+
+        if error:
+            logger.warning(f"Async batch relationship extraction failed: {error}")
+            return {cid: [] for cid in chunkIds}
+
+        parsed = self._parseJson(response)
+        if not parsed:
+            snippet = response[:500].replace('\n', ' ')
+            logger.warning(f"Failed to parse async batch relationship response. Snippet: {snippet}...")
+            return {cid: [] for cid in chunkIds}
+
+        results = {}
+        for idx, chunk in enumerate(chunks):
+            chunkData = parsed.get(str(idx), {})
+            rawRels = chunkData.get("relationships", []) if isinstance(chunkData, dict) else []
+
+            relationships = []
+            for r in rawRels:
+                try:
+                    sourceName = r.get("source", "").lower()
+                    targetName = r.get("target", "").lower()
+                    sourceEntity = entityLookup.get(sourceName)
+                    targetEntity = entityLookup.get(targetName)
+
+                    if not sourceEntity or not targetEntity:
+                        for name, entity in entityLookup.items():
+                            if sourceName in name or name in sourceName:
+                                sourceEntity = sourceEntity or entity
+                            if targetName in name or name in targetName:
+                                targetEntity = targetEntity or entity
+
+                    if not sourceEntity or not targetEntity:
+                        continue
+
+                    relationship = Relationship(
+                        relationshipId=str(uuid.uuid4()),
+                        sourceEntityId=sourceEntity.entityId,
+                        targetEntityId=targetEntity.entityId,
+                        relationshipType=r.get("type", "RELATED_TO").upper(),
+                        description=r.get("description", ""),
+                        weight=1.0
+                    )
+                    relationships.append(relationship)
+                except Exception as exc:
+                    logger.warning(f"Error creating relationship in async batch: {exc}")
+                    continue
+            results[chunk.chunkId] = relationships
+
+        totalRels = sum(len(r) for r in results.values())
+        logger.info(f"Async batch extracted {totalRels} relationships from {len(chunks)} chunks")
+        return results
+
+    # ------------------------------------------------------------------
+    # Sync availability / test helpers
+    # ------------------------------------------------------------------
+
     def isAvailable(self) -> bool:
         # Check if the LLM endpoint is reachable via Docker Model Runner.
         try:
@@ -592,6 +776,10 @@ class OpenRouterClient(LocalLLMClient):
             base_url="https://openrouter.ai/api/v1",
             api_key=self.apiKey,
         )
+        self.async_client = AsyncOpenAI(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=self.apiKey,
+        )
         logger.info(f"OpenRouter client initialized using {self.model}")
 
     def _callLLM(self, prompt: str, taskDescription: str = "OpenRouter request") -> Tuple[str, Optional[str]]:
@@ -621,6 +809,32 @@ class OpenRouterClient(LocalLLMClient):
             
         except Exception as exc:
             error = f"OpenRouter API error: {exc}"
+            logger.error(f"Error: {error}")
+            return "", error
+
+    async def _callLLMAsync(self, prompt: str, taskDescription: str = "OpenRouter async request") -> Tuple[str, Optional[str]]:
+        # Async version of _callLLM for OpenRouter using the openai async client.
+        try:
+            completion = await self.async_client.chat.completions.create(
+                extra_headers={
+                    "HTTP-Referer": "https://github.com/graphrag-local",
+                    "X-Title": "GraphRAG Local Indexer",
+                },
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": settings.LLM_SYSTEM_PROMPT},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=self.temperature,
+                max_tokens=self.maxTokens
+            )
+            content = completion.choices[0].message.content
+            usage = getattr(completion, "usage", None)
+            if usage:
+                logger.info(f"{taskDescription} usage: {usage.prompt_tokens}p + {usage.completion_tokens}c = {usage.total_tokens} tokens")
+            return content, None
+        except Exception as exc:
+            error = f"OpenRouter async API error: {exc}"
             logger.error(f"Error: {error}")
             return "", error
 

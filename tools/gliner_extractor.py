@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import uuid
 import time
@@ -119,6 +120,11 @@ class GLiNEREntityExtractor(BaseEntityExtractor):
         logger.info(f"GLiNER processed {totalEntities} entities from {len(chunks)} chunks in {latency:.2f}s")
         
         return results
+
+    async def extractEntitiesBatchAsync(self, chunks: List[DocumentChunk]) -> Dict[str, List[Entity]]:
+        # Async wrapper: GLiNER is CPU-bound, so offload to a thread pool to avoid blocking the event loop.
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self.extractEntitiesBatch, chunks)
 
     def _normalizeRawEntities(self, rawEntities: List[Dict[str, Any]], chunkId: str, sourceDocumentId: str) -> List[Entity]:
         # Map GLiNER raw output to the standard Entity schema.
