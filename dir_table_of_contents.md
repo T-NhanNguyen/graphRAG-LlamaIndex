@@ -3,28 +3,278 @@
 ## `core/` (Orchestration & Storage)
 
 - `indexer.py`: The central pipeline. Coordinates ingestion, semantic chunking, embedding generation, BM25 indexing, and entity/relationship extraction. Supports resume-from-crash and --reset.
+  - **Class** `IndexingStats`: Statistics from indexing run.
+  - **Class** `SemanticChunker`: Semantic chunker that respects Markdown section boundaries using a two-phase split approach.
+  - **Func** `__init__`
+  - **Func** `__init__`
+  - **Func** `chunk`: Split text respecting section boundaries and cleaning artifacts. Returns list of chunks.
+  - **Func** `_splitOnHeaders`: Split on Markdown headers. Each section stays separate and headers are never merged.
+  - **Func** `_splitOversizedSection`: Split an oversized section using paragraph/sentence boundaries.
+  - **Func** `_findBreakPoint`: Find best break point: paragraph > sentence > newline > space.
+  - **Func** `_collapseExcessiveWhitespace`: Normalize noisy extractions while preserving structure.
+  - **Func** `_sanitizeArtifacts`: Strip persistent metadata noise like Page markers.
+  - **Class** `GraphRAGIndexer`: Main indexing pipeline for GraphRAG: processes documents into chunks, embeddings, and entities.
+  - **Func** `_loadFileContent`: Load file content.
+  - **Func** `_discoverFiles`: Find all markdown and text files in input directory.
+  - **Func** `isAlreadyIndexed`: Check if a source document path has already been indexed.
+  - **Func** `indexDocument`: Index a single document. Returns tuple of (docId, status).
+  - **Func** `_chunkDocumentContent`
+  - **Func** `generateEmbeddings`: Generate and store embeddings for chunks. Returns number of embeddings stored.
+  - **Func** `indexBM25`: Index chunks for BM25 sparse retrieval.
+  - **Func** `extractEntities`: Extract entities and relationships from chunks using hybrid batching strategy.
+  - **Func** `_processBatchAsync`
+  - **Func** `_runAllBatchesAsync`
+  - **Func** `pruneNoise`
+  - **Func** `resetDatabase`: Delete the database file and recreate with current config. Returns table name to deleted row counts.
+  - **Func** `indexDirectory`: Index all markdown and text files in a directory with automatic pipeline resume.
+  - **Func** `indexFile`: Index a single file. Returns indexing statistics.
+  - **Func** `main`: CLI entry point for indexing.
 - `query_engine.py`: High-level search interface. Bridges the storage layer and retrieval components to provide `find_connections`, `explore_thematic`, and `keyword_search` results.
+  - **Class** `QueryResult`: Structured query response for agent consumption.
+  - **Class** `GraphRAGQueryEngine`: Query engine supporting connection-based (graph context), thematic (community), and keyword search.
+  - **Func** `__init__`: Initialize query engine with storage and retrieval components.
+  - **Func** `_entityToDict`: Convert Entity to serializable dict.
+  - **Func** `_relationshipToDict`: Convert Relationship to serializable dict with optional entity name enrichment.
+  - **Func** `_resultToDict`: Convert RetrievalResult to serializable dict with source citations.
+  - **Func** `_deduplicateChunks`: Remove semantically similar chunks based on cosine similarity to maximize info density.
+  - **Func** `_cosineSimilarity`: Calculate cosine similarity between two vectors.
+  - **Func** `localSearch`: Local search with entity graph context. Returns QueryResult with evidence for agent reasoning.
+  - **Func** `_groupRelationshipsByChunk`
+  - **Func** `globalSearch`: Global search for thematic queries using community summaries.
+  - **Func** `fusionSearch`
+  - **Func** `search`
+  - **Func** `getEntityNeighborhood`: Get entity and its neighborhood from the graph up to specified hops.
+  - **Func** `main`: CLI entry point for queries.
 - `duckdb_store.py`: Primary database abstraction. Manages the DuckDB schema (entities, relationships, chunks, embeddings) and handles cross-session persistence.
+  - **Class** `PipelineStatus`
+  - **Class** `SourceDocument`: Represents an ingested source file
+  - **Class** `DocumentChunk`: Unified text chunk with embedding.
+  - **Class** `Entity`: Represents a knowledge graph entity node
+  - **Class** `Relationship`: Represents a relationship edge between two entities
+  - **Class** `CommunitySummary`: Represents a thematic summary of a Leiden community
+  - **Class** `DuckDBStore`: Persistent DuckDB storage manager for GraphRAG. Stores data in a single .duckdb file with VSS support.
+  - **Func** `__init__`: Initialize DuckDB connection and ensure schema exists
+  - **Func** `_initializeSchema`: Create all tables with the redesigned GraphRAG schema
+  - **Func** `insertSourceDocument`: Insert a source document and return its ID
+  - **Func** `getSourceDocument`: Retrieve a source document by ID
+  - **Func** `getSourceDocumentByPath`: Check if a source document with this source path already exists
+  - **Func** `getSourceDocumentByFilename`: Match document by filename and parent folder for portable path matching.
+  - **Func** `updateSourceDocumentPath`: used after mount path migration
+  - **Func** `updatePipelineStatus`
+  - **Func** `getIncompleteDocuments`: Find source documents that have not completed all pipeline stages.
+  - **Func** `getDocumentsByStatus`: Get all documents at a specific pipeline stage
+  - **Func** `clearAllTables`: Clear all data from all tables. Returns count of deleted rows per table.
+  - **Func** `resetDatabase`: Nuclear reset: Close connection, delete file, reconnect.
+  - **Func** `insertDocumentChunks`: Batch insert chunks with embeddings. Returns count inserted
+  - **Func** `updateEmbeddings`: Update only the embeddings for a set of chunks
+  - **Func** `getChunksForSourceDocument`: Get all chunks for a source document, ordered by index
+  - **Func** `getAllChunks`: Get all chunks in the corpus
+  - **Func** `insertEntities`: Batch insert entities with conflict resolution and type priority merging.
+  - **Func** `_getPriority`
+  - **Func** `getEntityByName`
+  - **Func** `getAllEntities`: Get all entities in the knowledge graph
+  - **Func** `getEntityIdsByNames`: Bulk fetch entity IDs by their names (case-insensitive) to resolve post-upsert IDs.
+  - **Func** `getEntityNamesByIds`: Bulk fetch entity names and types by their IDs for relationship enrichment.
+  - **Func** `insertRelationships`: Batch insert relationships
+  - **Func** `insertCommunitySummaries`: Batch insert community summaries
+  - **Func** `insertCommunitySummaries`: Batch insert community summaries
+  - **Func** `getRelationshipsForEntity`
+  - **Func** `dropHnswIndex`: Drop the HNSW index to prevent 'Duplicate keys' error during large inserts.
+  - **Func** `ensureHnswIndex`: Recreate/ensure HNSW index exists on documents table.
+  - **Func** `vectorSimilaritySearch`: Perform vector similarity search using HNSW (VSS), SQL distance, or Python fallback.
+  - **Func** `insertSparseVectors`
+  - **Func** `updateBm25Stats`: Update corpus-level term document frequencies for IDF
+  - **Func** `getBm25Stats`: Get corpus statistics: (total_docs, avg_doc_length, term_doc_frequencies)
+  - **Func** `getStats`: Get corpus statistics for debugging/observability
+  - **Func** `deleteGarbageChunks`: Prune garbage chunks from all tables.
+  - **Func** `getEmbeddingCentroid`: Calculate the average embedding (centroid) for all documents
+  - **Func** `getEmbeddingCentroidForDocument`: Calculate the semantic center of a single document's chunks.
+  - **Func** `getOutlierChunkIdsForDocument`: Find chunks within a document that are distant from its centroid.
+  - **Func** `pruneStrandedEntities`: Delete entities that have no incoming or outgoing relationships. Returns number deleted.
+  - **Func** `getCorpusStats`: Get comprehensive statistics about the corpus (docs, chunks, entities, relationships).
+  - **Func** `close`
+  - **Func** `__enter__`
+  - **Func** `__exit__`
+  - **Func** `getStore`: Get or create a DuckDB store instance with multi-instance caching for concurrent access.
+  - **Func** `closeAllStores`: Close all cached store instances. Useful for cleanup
 - `workspace_config.py`: Global registry manager. Handles multi-database tracking and path resolution in `~/.graphrag/registry.json`.
+  - **Class** `DatabaseConfig`: Configuration for a single GraphRAG database.
+  - **Func** `toDict`: Convert to serializable dict.
+  - **Func** `fromDict`: Create from dict, handling missing optional fields.
+  - **Class** `WorkspaceRegistry`: Manages global database registry at ~/.graphrag/registry.json as a singleton.
+  - **Func** `__init__`: Initialize registry, creating directories if needed.
+  - **Func** `getInstance`: Get singleton instance.
+  - **Func** `_ensureDirectories`: Create registry directories if they don't exist.
+  - **Func** `_load`: Load registry from disk.
+  - **Func** `_save`: Persist registry to disk.
+  - **Func** `register`
+  - **Func** `get`: Get database configuration by name, falling back to default.
+  - **Func** `getOrDefault`: Get database configuration, creating default if not found.
+  - **Func** `list`: List all registered databases.
+  - **Func** `delete`: Remove database from registry and optionally delete files (NOT REVERTABLE).
+  - **Func** `updateLastIndexed`: Update the lastIndexed timestamp for a database.
+  - **Func** `registerExisting`: Register an existing .duckdb file under a new name.
+  - **Func** `getRegistry`: Get the global workspace registry singleton.
 - `graphrag_config.py`: Centralized settings. Defines constants, enums (SearchType, ExtractionMode), and Pydantic-based configuration loaded from `.env`.
+  - **Class** `EntityType`: Entity classification types for knowledge graph nodes.
+  - **Class** `EmbeddingProvider`: Supported embedding providers.
+  - **Class** `SearchType`: Query search strategy.
+  - **Class** `ExtractionMode`: Entity extraction strategies.
+  - **Class** `RelationshipProvider`: Relationship extraction providers.
+  - **Class** `GraphRAGSettings`: Runtime configuration loaded from .env. Magic numbers centralized here.
+  - **Func** `forDatabase`: Create settings instance with database-specific paths from workspace registry.
+  - **Func** `getSettingsForDatabase`: Get settings for a specific database or default singleton.
 - `embedding_provider.py`: Vector generation client. Provides parallelized batch embeddings compatible with OpenAI-style endpoints (Ollama/LMStudio).
+  - **Class** `DockerModelRunnerEmbeddings`: GPU-accelerated embeddings using OpenAI-compatible /embeddings endpoint with parallel batching.
+  - **Func** `__init__`
+  - **Func** `_embedBatch`: Execute single batch embedding request with retry logic
+  - **Func** `_embedAllAsync`: Orchestrate parallel embedding of all texts
+  - **Func** `processBatch`
+  - **Func** `embedDocuments`: Embed multiple texts with parallel batching. Returns list of vectors.
+  - **Func** `embedQuery`: Embed a single query text.
+  - **Func** `isAvailable`: Check if embedding endpoint is reachable
+  - **Func** `testConnection`: Perform a live embedding test to wake up the service.
+  - **Func** `getEmbeddings`: Factory function for embedding provider
 - `llm_client.py`: LLM interaction layer. Manages prompts for entity extraction, relationship discovery, and community summarization.
+  - **Class** `ExtractionResult`: Result from entity/relationship extraction.
+  - **Class** `LocalLLMClient`: Client for local LLM extraction using OpenAI-compatible API format (Ollama/Docker Model Runner).
+  - **Func** `__init__`: Initialize LLM client with optional baseUrl and model name.
+  - **Func** `__init__`: Initialize OpenRouter client.
+  - **Func** `_callLLM`: Make a chat completion request to the LLM. Returns (response_text, error_message).
+  - **Func** `_callLLM`: Make a chat completion request via OpenRouter.
+  - **Func** `_normalizeJson`: Normalize common LLM JSON hallucinations like redundant colons before parsing.
+  - **Func** `_parseJson`: Parse JSON from LLM response, handling markers, thinking tags, and truncated content.
+  - **Func** `_tryRepairTruncated`: Attempt to balance unclosed braces and brackets for truncated JSON responses.
+  - **Func** `extractEntities`: Extract entities from text chunk. Returns list of Entities.
+  - **Func** `extractRelationships`: Extract relationships between entities from source text.
+  - **Func** `extract`: Full extraction pipeline: entities followed by relationships.
+  - **Func** `extractEntitiesBatch`: Extract entities from multiple chunks in a single LLM call using chunk separators.
+  - **Func** `extractRelationshipsBatch`: Batch extract relationships minimizing network loops and providing document context.
+  - **Func** `extractBatch`: Full extraction pipeline for a batch of chunks using dual-batch strategy.
+  - **Func** `_callLLMAsync`: Async version of _callLLM using httpx.AsyncClient.
+  - **Func** `_callLLMAsync`: Async version of _callLLM for OpenRouter using the openai async client.
+  - **Func** `extractEntitiesBatchAsync`: Async version of extractEntitiesBatch — same logic, uses _callLLMAsync.
+  - **Func** `extractRelationshipsBatchAsync`: Async version of extractRelationshipsBatch — same logic, uses _callLLMAsync.
+  - **Func** `isAvailable`: Check if the LLM endpoint is reachable via Docker Model Runner.
+  - **Func** `isAvailable`: Check if OpenRouter API is reachable (basic key check).
+  - **Func** `testConnection`: Perform a live query test to verify the LLM is responding and return the model name.
+  - **Func** `testConnection`: Perform a live query test via OpenRouter.
+  - **Func** `summarizeCommunity`: Generate a thematic summary for a group of entities.
+  - **Func** `scoreQuality`: Score the quality of a text chunk (0.0 to 1.0) using the LLM.
+  - **Class** `OpenRouterClient`: Client for OpenRouter API extraction, optimized for relationship grunt work.
+  - **Func** `getLLMClient`: Factory for general LLM client (entities, summarization, pruning).
+  - **Func** `getRelationshipClient`: Factory function for RELATIONSHIP extraction client.
 
 ## `api/` (Endpoints & Interfaces)
 
 - `graphrag_cli.py`: The human/server entry point. Implements the `graphrag` CLI for managing databases, health checks, and running multi-mode searches.
+  - **Class** `GraphRAGService`: Core service layer for GraphRAG operations. Returns structured data (dicts).
+  - **Func** `start`
+  - **Func** `index`
+  - **Func** `search`
+  - **Func** `listDatabases`: List all registered databases.
+  - **Func** `status`: Get database statistics.
+  - **Func** `delete`: Remove a database from registry.
+  - **Func** `register`
+  - **Func** `_formatSuccess`
+  - **Func** `_formatError`
+  - **Func** `_formatTable`: Print a simple ASCII table.
+  - **Func** `_testLLM`: Test LLM connection and display status. Returns True if successful.
+  - **Func** `_testEmbeddings`: Test Embedding connection and display status. Returns True if successful.
+  - **Func** `_cmdStart`: Handle 'start' command.
+  - **Func** `_cmdIndex`: Handle 'index' command.
+  - **Func** `_cmdSearch`: Handle 'search' command.
+  - **Func** `_cmdList`: Handle 'list' command.
+  - **Func** `_cmdStatus`: Handle 'status' command.
+  - **Func** `_cmdDelete`: Handle 'delete' command.
+  - **Func** `_cmdRegister`: Handle 'register' command.
+  - **Func** `main`: Main CLI entry point.
 - `mcp.py`: Python MCP Command Router. Translates internal functions into Model Context Protocol (MCP) compatible responses for agentic tool use.
+  - **Func** `_getQueryEngine`: Lazy singleton for query engine using active database from environment.
+  - **Func** `_preprocessData`: Process data for JSON/TSON serialization: converts dataclasses, drops Nones, applies TSON.
+  - **Func** `_truncateResults`: Apply safety limits (topK) to prevent token bloat while preserving reasoning quality.
+  - **Func** `cleanRelationships`
+  - **Func** `_formatMcpResponse`: Standardized high-signal JSON response for AI agents.
+  - **Func** `_getParams`: Extract parameters from either a single dict or positional args.
+  - **Func** `routeCommand`: Parse and route agent command string (search, explore_entity_graph, get_corpus_stats).
 - `mcp_server.ts`: TypeScript MCP Wrapper. Exposes the Python engine as a standard MCP server for seamless integration with AI agents.
 
 ## `tools/` (Processing & Utilities)
 
 - `entity_extractor.py`: Common interface for entity extraction. Defines the `BaseEntityExtractor` and factory for switching between LLM and GLiNER modes.
+  - **Class** `BaseEntityExtractor`: Ensures different extraction models (LLM, GLiNER) can be swapped seamlessly
+  - **Func** `extractEntities`: Extract entities from a single text chunk
+  - **Func** `extractEntities`
+  - **Func** `extractEntitiesBatch`: Extract entities from a batch of chunks for efficiency
+  - **Func** `extractEntitiesBatch`
+  - **Func** `extractEntitiesBatchAsync`: Async version of extractEntitiesBatch for use in asyncio pipelines.
+  - **Func** `extractEntitiesBatchAsync`
+  - **Class** `LLMEntityExtractor`: Adapter for existing LLM-based entity extraction.
+  - **Func** `__init__`
+  - **Class** `ExtractorFactory`: To instantiate the appropriate entity extractor based on configuration
+  - **Func** `getExtractor`
 - `gliner_extractor.py`: Zero-shot NER extraction. Implements entity extraction using the GLiNER transformer model for lower-latency indexing.
+  - **Class** `GLiNEREntityExtractor`: Local entity extraction using GLiNER transformer encoders for zero-shot NER extraction.
+  - **Func** `__init__`: Initialize GLiNER extractor with optional model name and confidence threshold.
+  - **Func** `extractEntities`: Extract normalized entities from a single text chunk.
+  - **Func** `extractEntitiesBatch`: Extract entities from multiple chunks in a single pass.
+  - **Func** `extractEntitiesBatchAsync`: Async wrapper: GLiNER is CPU-bound, so offload to a thread pool to avoid blocking the event loop.
+  - **Func** `_normalizeRawEntities`: Map GLiNER raw output to the standard Entity schema.
 - `community_pipeline.py`: Graph analysis tool. Implements hierarchical Leiden clustering and LLM-based summarization to build community-level insights.
+  - **Class** `LeidenPipeline`: Orchestrates hierarchical community detection and summarization
+  - **Func** `__init__`
+  - **Func** `_loadGraph`: Build a NetworkX graph from DuckDB entities and relationships
+  - **Func** `detectCommunities`: Run hierarchical Leiden clustering.
+  - **Func** `summarizeCommunities`: Generate summaries for each detected community and persist to DuckDB
+  - **Func** `run`: Full pipeline execution.
 - `fusion_retrieval.py`: Hybrid retrieval engine. Combines BM25 and Vector search results using Reciprocal Rank Fusion (RRF) for improved accuracy.
+  - **Class** `RetrievalResult`: Single retrieval result with scores and metadata.
+  - **Class** `FusionRetriever`: Hybrid retrieval combining BM25 and vector similarity with Alpha blending and RRF.
+  - **Func** `__init__`: Initialize fusion retriever with store and optional embedding function.
+  - **Func** `setEmbeddingFunction`: Set or update the embedding function.
+  - **Func** `_normalizeScores`: Min-max normalize scores to [0, 1] range.
+  - **Func** `_calculateRrfScore`: Calculate Reciprocal Rank Fusion (RRF) score based on method ranks.
+  - **Func** `search`
+  - **Func** `_enrichResults`: Bulk fetch embeddings and metadata for results (in-place update).
+  - **Func** `_vectorSearch`: Perform vector similarity search.
+  - **Func** `_bm25Search`: Perform BM25 keyword search.
+  - **Func** `_bm25OnlySearch`: Fallback to BM25-only search.
+  - **Func** `_fuseResults`
+  - **Func** `searchWithEntityContext`: Fusion search with entity extraction from graph for local context.
+  - **Func** `getFusionRetriever`: Factory function for FusionRetriever.
 - `bm25_index.py`: Sparse vector indexing. Implements the BM25 algorithm for keyword-based retrieval, supporting multilingual tokenization.
+  - **Class** `BM25Indexer`: BM25 sparse vector indexer for hybrid retrieval. Tokenizes docs and stores stats for scoring.
+  - **Func** `__init__`: Initialize with DuckDB store and load language-specific stopwords.
+  - **Func** `__init__`
+  - **Func** `tokenize`: Tokenize text into lowercase terms with cleaning. Supports multilingual/CJK characters.
+  - **Func** `calculateTermFrequencies`: Calculate term frequency for each unique token.
+  - **Func** `indexChunks`: Index chunks for BM25 retrieval and return term document frequencies.
+  - **Class** `BM25Scorer`: BM25 scoring engine for query-time retrieval using DuckDB stats.
+  - **Func** `_loadCorpusStats`: Load corpus-level statistics from DuckDB.
+  - **Func** `refreshStats`: Reload corpus stats after new documents are indexed.
+  - **Func** `_idf`: Calculate Inverse Document Frequency (IDF) for a term using BM25 formula.
+  - **Func** `scoreDocument`
+  - **Func** `search`: Search corpus using BM25 scoring. Returns ranked chunk IDs and scores.
+  - **Func** `createBm25Index`: Convenience function to index chunks for BM25.
+  - **Func** `getBm25Scorer`: Get a BM25 scorer with loaded corpus statistics.
 - `garbage_filter.py`: Data quality guard. Uses statistical heuristics (entropy, repetition) and embedding outlier detection to prune "junk" chunks.
+  - **Class** `GarbageFilter`: Multi-stage filtering for knowledge graph chunks (stateless and LLM-based).
+  - **Func** `calculateRepetitionRatio`: Calculate character repetition ratio, ignoring whitespace.
+  - **Func** `calculateEntropy`: Calculate Shannon entropy to measure information density.
+  - **Func** `calculateMalformedRatio`: Detect broken ligatures (e.g., 'fi', 'fl') common in poor PDF extraction.
+  - **Func** `calculateWhitespaceDensity`: Calculate whitespace density to identify 'diluted' or poorly formatted chunks.
+  - **Func** `isGarbagePre`: Run fast deterministic preprocessing filters. Returns failure reason if garbage, else None.
+  - **Class** `GarbageLogger`: Utility to log skipped garbage chunks for tracking and auditing.
+  - **Func** `__init__`
+  - **Func** `_ensureInitialized`
+  - **Func** `log`: Log a garbage chunk and save individual evidence for inspection.
+  - **Func** `_saveIndividualEvidence`: Save full pruned text to a Markdown file for auditing.
+  - **Func** `_persistToDisk`: Persist logs to disk in JSON and JS (viewer) formats.
 - `json_to_tson.py`: Token optimization. Converts JSON lists into "Tabular SON" (TSON) format to reduce context window usage.
+  - **Class** `TypeInference`: Maps Python types to TSON schema type identifiers for data analysis.
+  - **Func** `inferFromValue`: Infer TSON type string from a Python value.
+  - **Func** `isUniformDictList`: Check if the list contains enough dictionaries to justify TSON compression.
+  - **Func** `convertToTSON`: Convert a list of dicts to TSON tabular compression to save tokens.
 
 ## `deployment/` (Infrastructure)
 

@@ -1,5 +1,6 @@
 # Fusion Retrieval Engine - Hybrid BM25 + Vector search with RRF scoring.
 import logging
+import json
 from typing import List, Dict, Tuple, Optional
 from dataclasses import dataclass
 from concurrent.futures import ThreadPoolExecutor
@@ -23,6 +24,7 @@ class RetrievalResult:
     vectorRank: int = 0
     bm25Rank: int = 0
     embedding: Optional[List[float]] = None  # Added for deduplication
+    metadata: Optional[Dict] = None  # Storage for raw chunk metadata (e.g., source path)
 
 
 class FusionRetriever:
@@ -77,16 +79,16 @@ class FusionRetriever:
         vectorResults = self._vectorSearch(query, topK * 3)  # Over-fetch for fusion
         bm25Results = self._bm25Search(query, topK * 3)
         
-        # Merge results, sort, and enrich with embeddings.
+        # Merge results, sort, and enrich with embeddings and metadata.
         fusedResults = self._fuseResults(vectorResults, bm25Results, useRrf, useAlpha)
         fusedResults.sort(key=lambda r: r.fusedScore, reverse=True)
         topResults = fusedResults[:topK]
-        self._enrichWithEmbeddings(topResults)
+        self._enrichResults(topResults)
         
         return topResults
     
-    def _enrichWithEmbeddings(self, results: List[RetrievalResult]) -> None:
-        # Bulk fetch embeddings for results (in-place update) for deduplication.
+    def _enrichResults(self, results: List[RetrievalResult]) -> None:
+        # Bulk fetch embeddings and metadata for results (in-place update).
         if not results:
             return
         
@@ -94,17 +96,21 @@ class FusionRetriever:
             chunkIds = [r.chunkId for r in results]
             placeholders = ', '.join(['?'] * len(chunkIds))
             rows = self.store.connection.execute(f"""
-                SELECT chunk_id, embedding
+                SELECT chunk_id, embedding, metadata
                 FROM documents
                 WHERE chunk_id IN ({placeholders})
             """, chunkIds).fetchall()
             
-            embeddingMap = {row[0]: row[1] for row in rows if row[1] is not None}
+            # Map chunkId -> (embedding, metadata_json)
+            dataMap = {row[0]: (row[1], row[2]) for row in rows}
             
             for result in results:
-                result.embedding = embeddingMap.get(result.chunkId)
+                embedding, metaJson = dataMap.get(result.chunkId, (None, None))
+                result.embedding = embedding
+                result.embedding = embedding
+                result.metadata = json.loads(metaJson) if isinstance(metaJson, str) else metaJson
         except Exception as exc:
-            logger.warning(f"Failed to enrich results with embeddings: {exc}")
+            logger.warning(f"Failed to enrich results: {exc}")
     
     def _vectorSearch(self, query: str, k: int) -> List[Tuple[str, float, str]]:
         # Perform vector similarity search.
@@ -130,7 +136,7 @@ class FusionRetriever:
     def _bm25OnlySearch(self, query: str, topK: int) -> List[RetrievalResult]:
         # Fallback to BM25-only search.
         bm25Results = self._bm25Search(query, topK)
-        return [
+        topResults = [
             RetrievalResult(
                 chunkId=chunkId,
                 text=text,
@@ -140,6 +146,8 @@ class FusionRetriever:
             )
             for i, (chunkId, score, text) in enumerate(bm25Results)
         ]
+        self._enrichResults(topResults)
+        return topResults
     
     def _fuseResults(self, vectorResults: List[Tuple[str, float, str]], 
                      bm25Results: List[Tuple[str, float, str]],

@@ -20,8 +20,9 @@ docker compose build
 
 Load the shell aliases for the fastest workflow:
 
-- **PowerShell**: `. .\.graphrag-alias.ps1`
+- **macOS (Zsh)**: `source .graphrag-alias.zsh`
 - **WSL/Bash**: `source .graphrag-alias.sh`
+- **PowerShell**: `. .\.graphrag-alias.ps1`
 
 ### Indexing Documents
 

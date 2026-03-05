@@ -39,6 +39,9 @@ future_plans/
 docs/archive/
 .graphrag-alias.ps1
 .graphrag-alias.sh
+.graphrag-alias.zsh
+.generate_toc.py
+.test_source_retrieval.py
 
 # OS
 .DS_Store

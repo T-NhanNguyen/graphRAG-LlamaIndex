@@ -1,4 +1,5 @@
 import logging
+import os
 import json
 import argparse
 import numpy as np
@@ -77,10 +78,14 @@ class GraphRAGQueryEngine:
         return result
     
     def _resultToDict(self, result: RetrievalResult) -> Dict:
-        # Convert RetrievalResult to serializable dict.
+        # Convert RetrievalResult to serializable dict with source citations.
+        path = os.path.normpath(result.metadata.get("source", "Unknown")) if isinstance(result.metadata, dict) else "Unknown"
+        sourceName = os.path.basename(path)
+        
         return {
             "chunkId": result.chunkId,
             "text": result.text,
+            "source": sourceName,
             "vectorScore": round(result.vectorScore or 0.0, 4),
             "bm25Score": round(result.bm25Score or 0.0, 4),
             "fusedScore": round(result.fusedScore or 0.0, 4),
